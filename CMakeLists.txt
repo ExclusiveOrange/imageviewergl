@@ -10,7 +10,7 @@ find_package(glfw3 3.3.4 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 
-file(GLOB cpps src/*.cpp)
+file(GLOB cpps src/*.cpp util/*.cpp)
 add_executable(${PROJECT_NAME} ${cpps})
 
 target_include_directories(${PROJECT_NAME} PRIVATE sub/stb)
