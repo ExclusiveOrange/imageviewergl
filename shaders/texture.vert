@@ -12,12 +12,12 @@ void main()
   );
 
   const vec2 uvs[4] = vec2[](
-  vec2(0.0, 0.0),
-  vec2(1.0, 0.0),
   vec2(0.0, 1.0),
-  vec2(1.0, 1.0)
+  vec2(1.0, 1.0),
+  vec2(0.0, 0.0),
+  vec2(1.0, 0.0)
   );
 
-  gl_Position = vec4(xys[gl_VertexID], 0.0, 1.0);
-  uv = uvs[gl_VertexID];
+  gl_Position = vec4( xys[ gl_VertexID ], 0.0, 1.0);
+  uv = uvs[ gl_VertexID ];
 }
