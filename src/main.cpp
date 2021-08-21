@@ -1,7 +1,7 @@
 #include "readFile.hpp"
 
 #define GL_SILENCE_DEPRECATION // MacOS has deprecated OpenGL - it still works up to 4.1 for now
-#define GLFW_INCLUDE_GLCOREARB
+#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
 #include <stb_image.h>
@@ -69,6 +69,14 @@ int main()
     if( GLFWwindow *window = glfwCreateWindow( 640, 480, "My Title", NULL, NULL ))
     {
       glfwMakeContextCurrent( window );
+
+      // initialize glew
+      {
+
+        GLenum error = glewInit();
+        if( error != GLEW_OK )
+          std::cerr << "glewInit() failed" << std::endl;
+      }
 
       // create texture for testing
       GLuint texture{};
