@@ -1,7 +1,7 @@
 #include "readFile.hpp"
 
 #define GL_SILENCE_DEPRECATION // MacOS has deprecated OpenGL - it still works up to 4.1 for now
-#include <GL/glew.h>
+#include <gl/glew.h>
 #include <GLFW/glfw3.h>
 
 #include <stb_image.h>
@@ -66,7 +66,7 @@ int main()
     for( auto windowHint : windowHints )
       glfwWindowHint( windowHint.hint, windowHint.value );
 
-    if( GLFWwindow *window = glfwCreateWindow( 640, 480, "My Title", NULL, NULL ))
+    if( GLFWwindow *window = glfwCreateWindow( 640, 480, "My Title", nullptr, nullptr ))
     {
       glfwMakeContextCurrent( window );
 

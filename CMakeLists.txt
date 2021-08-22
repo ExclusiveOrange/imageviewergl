@@ -19,7 +19,13 @@ find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 
 file(GLOB cpps src/*.cpp util/*.cpp)
-add_executable(${PROJECT_NAME} ${cpps})
+
+if (WIN32)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
+    add_executable(${PROJECT_NAME} WIN32 ${cpps})
+else ()
+    add_executable(${PROJECT_NAME} ${cpps})
+endif ()
 
 target_include_directories(${PROJECT_NAME} PRIVATE sub/stb)
 target_include_directories(${PROJECT_NAME} PRIVATE util)
