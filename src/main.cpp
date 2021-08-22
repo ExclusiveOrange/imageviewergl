@@ -10,6 +10,7 @@
 #include <functional>
 #include <iostream>
 #include <optional>
+#include <thread>
 
 //==============================================================================
 
@@ -58,6 +59,9 @@ struct Destroyer
 
 int main( int arc, char *argv[] )
 {
+  // TODO: refactor into separate functions; maybe with a State struct or something to share data...
+  //       maybe put all this in an App class... something to organize it better
+
   // TODO: check args: expect 1 filename
   // TODO: fork threads:
   //    A: try to load filename as image then join B
@@ -67,6 +71,33 @@ int main( int arc, char *argv[] )
   //    * load image into GPU memory (GL texture)
   //    * change window size to fit image
   //    * draw image initially, then as needed
+
+  struct Image
+  {
+    int width{}, height{}, nChannels{};
+    stbi_uc *pixels{};
+  };
+
+  struct ThreadShared
+  {
+    const char *filename = "../texture.jpg";
+    std::optional< Image > maybeImage;
+  } threadShared;
+
+  //------------------------------------------------------------------------------
+
+  std::thread imageLoadingThread{
+      [&threadShared]
+      {
+        Image image;
+        image.pixels = stbi_load( threadShared.filename, &image.width, &image.height, &image.nChannels, 0 );
+        if( !image.pixels )
+          std::cerr << "failed to load pixels " << threadShared.filename << ": " << stbi_failure_reason() << std::endl;
+        else
+          threadShared.maybeImage.emplace( std::move( image ));
+      }};
+
+  //------------------------------------------------------------------------------
 
   if( !glfwInit())
   {
@@ -110,47 +141,6 @@ int main( int arc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  GLuint texture{};
-  glGenTextures( 1, &texture );
-  glBindTexture( GL_TEXTURE_2D, texture );
-  {
-    int width, height, nChannels;
-    stbi_uc *image = stbi_load( "../texture.jpg", &width, &height, &nChannels, 0 );
-    // TODO: error check result of stbi_load
-    assert( nChannels > 0 && nChannels <= 4 );
-
-    GLenum formatByNumChannels[4]{
-        GL_RED,
-        GL_RG,
-        GL_RGB,
-        GL_RGBA
-    };
-    GLenum format = formatByNumChannels[nChannels - 1];
-
-    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, format, GL_UNSIGNED_BYTE, image );
-
-    if( nChannels < 3 )
-    {
-      GLint swizzleMask[2][4]{
-          { GL_RED, GL_RED, GL_RED, GL_ONE },
-          { GL_RED, GL_RED, GL_RED, GL_GREEN }};
-
-      glTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask[nChannels - 1] );
-    }
-
-    stbi_image_free( image );
-  }
-  Destroyer _texture{ [&texture]{ glDeleteTextures(1, &texture); }};
-
-  //------------------------------------------------------------------------------
-
-  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
-  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
-  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-
-  //------------------------------------------------------------------------------
-
   GLuint vertShader{};
   if( std::optional< GLuint > maybeVertShader = loadShader( "../shaders/texture.vert", GL_VERTEX_SHADER ))
     vertShader = *maybeVertShader;
@@ -170,7 +160,7 @@ int main( int arc, char *argv[] )
   //------------------------------------------------------------------------------
 
   GLuint shaderProgram = glCreateProgram();
-  Destroyer _shaderProgram{ [shaderProgram]{ glDeleteProgram( shaderProgram ); }};
+  Destroyer _shaderProgram{ [shaderProgram] { glDeleteProgram( shaderProgram ); }};
   glAttachShader( shaderProgram, vertShader );
   glAttachShader( shaderProgram, fragShader );
   glLinkProgram( shaderProgram );
@@ -187,8 +177,54 @@ int main( int arc, char *argv[] )
   // shouldn't need any because the vertices are generated in the vert shader, but maybe I need something here...
   GLuint emptyVertexArray = 0;
   glGenVertexArrays( 1, &emptyVertexArray );
-  Destroyer _emptyVertexArray{ [emptyVertexArray]{ glDeleteVertexArrays(1, &emptyVertexArray); }};
+  Destroyer _emptyVertexArray{ [emptyVertexArray] { glDeleteVertexArrays( 1, &emptyVertexArray ); }};
   glBindVertexArray( emptyVertexArray );
+
+  //------------------------------------------------------------------------------
+
+  imageLoadingThread.join();
+
+  if( !threadShared.maybeImage )
+    return 1;
+
+  //------------------------------------------------------------------------------
+
+  GLuint texture{};
+  glGenTextures( 1, &texture );
+  glBindTexture( GL_TEXTURE_2D, texture );
+  {
+    Image &image = *threadShared.maybeImage;
+
+    GLenum formatByNumChannels[4]{
+        GL_RED,
+        GL_RG,
+        GL_RGB,
+        GL_RGBA
+    };
+    GLenum format = formatByNumChannels[image.nChannels - 1];
+
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0, format, GL_UNSIGNED_BYTE, image.pixels );
+
+    if( image.nChannels < 3 )
+    {
+      GLint swizzleMask[2][4]{
+          { GL_RED, GL_RED, GL_RED, GL_ONE },
+          { GL_RED, GL_RED, GL_RED, GL_GREEN }};
+
+      glTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask[image.nChannels - 1] );
+    }
+
+    stbi_image_free( image.pixels );
+    threadShared.maybeImage.reset();
+  }
+  Destroyer _texture{ [&texture] { glDeleteTextures( 1, &texture ); }};
+
+  //------------------------------------------------------------------------------
+
+  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
+  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
+  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+  glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 
   //------------------------------------------------------------------------------
 
@@ -198,8 +234,8 @@ int main( int arc, char *argv[] )
     // TODO: wait for signal to draw a frame; maybe wait on a condition variable or something
 
     // Clear the screen to black
-//            glClearColor( 0.5f, 0.0f, 0.0f, 1.0f );
-//            glClear( GL_COLOR_BUFFER_BIT );
+//    glClearColor( 0.5f, 0.0f, 0.0f, 1.0f );
+//    glClear( GL_COLOR_BUFFER_BIT );
 
     glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
 
