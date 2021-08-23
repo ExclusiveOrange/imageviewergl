@@ -53,6 +53,13 @@ struct Destroyer
   const std::function< void( void ) > fnOnDestroy;
   ~Destroyer() { fnOnDestroy(); }
 };
+
+void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+{
+    glViewport(0, 0, width, height);
+
+    std::cout << width << " x " << height << std::endl;
+}
 } // namespace
 
 //==============================================================================
@@ -63,14 +70,8 @@ int main( int arc, char *argv[] )
   //       maybe put all this in an App class... something to organize it better
 
   // TODO: check args: expect 1 filename
-  // TODO: fork threads:
-  //    A: try to load filename as image then join B
-  //    B: initialize glfw and create a window then wait for A
-  // TODO: if error in A then when A joins B, display message and quit
-  // TODO: else if no error (image loaded into CPU memory) then:
-  //    * load image into GPU memory (GL texture)
-  //    * change window size to fit image
-  //    * draw image initially, then as needed
+
+  // TODO: add "dear imgui", for eventual messages or image information or application settings
 
   struct Image
   {
@@ -92,7 +93,7 @@ int main( int arc, char *argv[] )
         Image image;
         image.pixels = stbi_load( threadShared.filename, &image.width, &image.height, &image.nChannels, 0 );
         if( !image.pixels )
-          std::cerr << "failed to load pixels " << threadShared.filename << ": " << stbi_failure_reason() << std::endl;
+          std::cerr << "failed to load image " << threadShared.filename << "\nbecause: " << stbi_failure_reason() << std::endl;
         else
           threadShared.maybeImage.emplace( std::move( image ));
       }};
@@ -129,6 +130,7 @@ int main( int arc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
+  glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
   glfwMakeContextCurrent( window );
 
   //------------------------------------------------------------------------------
@@ -187,14 +189,15 @@ int main( int arc, char *argv[] )
   if( !threadShared.maybeImage )
     return 1;
 
+  Image image = *threadShared.maybeImage;
+  threadShared.maybeImage.reset();
+
   //------------------------------------------------------------------------------
 
   GLuint texture{};
   glGenTextures( 1, &texture );
   glBindTexture( GL_TEXTURE_2D, texture );
   {
-    Image &image = *threadShared.maybeImage;
-
     GLenum formatByNumChannels[4]{
         GL_RED,
         GL_RG,
@@ -215,9 +218,13 @@ int main( int arc, char *argv[] )
     }
 
     stbi_image_free( image.pixels );
-    threadShared.maybeImage.reset();
+    image.pixels = {};
   }
   Destroyer _texture{ [&texture] { glDeleteTextures( 1, &texture ); }};
+
+  //------------------------------------------------------------------------------
+
+//  glfwSetWindow
 
   //------------------------------------------------------------------------------
 
