@@ -113,11 +113,13 @@ int main( int arc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  for( auto[hint, value] : (int[][2]){
-      { GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE },
-      { GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE },
-      { GLFW_CONTEXT_VERSION_MAJOR, 4 },
-      { GLFW_CONTEXT_VERSION_MINOR, 1 }} )
+  struct { int hint, value; } windowHints[]{
+    { GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE },
+    { GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE },
+    { GLFW_CONTEXT_VERSION_MAJOR, 4 },
+    { GLFW_CONTEXT_VERSION_MINOR, 1 }};
+
+  for( auto[hint, value] : windowHints )
     glfwWindowHint( hint, value );
 
   GLFWwindow *window = glfwCreateWindow( 640, 480, "My Title", nullptr, nullptr );
