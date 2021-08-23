@@ -7,6 +7,7 @@
 #include <stb_image.h>
 
 #include <cassert>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <optional>
@@ -16,9 +17,28 @@
 
 namespace
 {
-void glfwErrorCallback( int error, const char *description )
+void _glfwErrorCallback(int error, const char *description )
 {
   std::cerr << "GLFW error: " << error << ": " << description << std::endl;
+}
+
+void _glfwFrameSizeCallback(GLFWwindow* window, int width, int height)
+{
+  glViewport(0, 0, width, height);
+}
+
+std::filesystem::path
+getExePath(const char *argv0)
+{
+  return std::filesystem::current_path() / argv0;
+}
+
+void
+setWorkingDirectoryToExecutable(const char *argv0)
+{
+  std::filesystem::path fullExePath = std::filesystem::current_path() / argv0;
+  fullExePath.remove_filename();
+  std::filesystem::current_path() = fullExePath;
 }
 
 std::optional< GLuint >
@@ -53,25 +73,39 @@ struct Destroyer
   const std::function< void( void ) > fnOnDestroy;
   ~Destroyer() { fnOnDestroy(); }
 };
-
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
-{
-    glViewport(0, 0, width, height);
-
-    std::cout << width << " x " << height << std::endl;
-}
 } // namespace
 
 //==============================================================================
 
-int main( int arc, char *argv[] )
+int main( int argc, char *argv[] )
 {
   // TODO: refactor into separate functions; maybe with a State struct or something to share data...
   //       maybe put all this in an App class... something to organize it better
 
-  // TODO: check args: expect 1 filename
-
   // TODO: add "dear imgui", for eventual messages or image information or application settings
+
+  if( argc != 2 )
+  {
+    std::cout << "usage: " << argv[0] << " path/to/someImage.jpg" << std::endl;
+    return 1;
+  }
+
+  //------------------------------------------------------------------------------
+
+  // remember initial working directory (might be not exe directory)
+  const std::filesystem::path initialWorkingDirectory = std::filesystem::current_path();
+  Destroyer revertWorkingDirectory{ [&]{ std::filesystem::current_path( initialWorkingDirectory ); }};
+
+  {
+    // set working directory to this exe (so dll's can be found, at least on Windows)
+    std::filesystem::path fullExePath = std::filesystem::current_path() / argv[0];
+    fullExePath.remove_filename();
+    std::filesystem::current_path(fullExePath);
+  }
+
+  //------------------------------------------------------------------------------
+
+  std::string imageFilename = (initialWorkingDirectory / argv[1]).string();
 
   struct Image
   {
@@ -79,24 +113,27 @@ int main( int arc, char *argv[] )
     stbi_uc *pixels{};
   };
 
-  struct ThreadShared
+  struct
   {
-    const char *filename = "../texture.jpg";
     std::optional< Image > maybeImage;
   } threadShared;
 
   //------------------------------------------------------------------------------
 
   std::thread imageLoadingThread{
-      [&threadShared]
+      [&imageFilename,&threadShared]
       {
         Image image;
-        image.pixels = stbi_load( threadShared.filename, &image.width, &image.height, &image.nChannels, 0 );
+        image.pixels = stbi_load( imageFilename.c_str(), &image.width, &image.height, &image.nChannels, 0 );
         if( !image.pixels )
-          std::cerr << "failed to load image " << threadShared.filename << "\nbecause: " << stbi_failure_reason() << std::endl;
+          std::cerr << "failed to load image " << imageFilename << "\nbecause: " << stbi_failure_reason() << std::endl;
         else
-          threadShared.maybeImage.emplace( std::move( image ));
+          threadShared.maybeImage.emplace( image );
       }};
+
+  //------------------------------------------------------------------------------
+
+  glfwSetErrorCallback(_glfwErrorCallback);
 
   //------------------------------------------------------------------------------
 
@@ -109,15 +146,12 @@ int main( int arc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  glfwSetErrorCallback( glfwErrorCallback );
-
-  //------------------------------------------------------------------------------
-
   struct { int hint, value; } windowHints[]{
     { GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE },
     { GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE },
     { GLFW_CONTEXT_VERSION_MAJOR, 4 },
-    { GLFW_CONTEXT_VERSION_MINOR, 1 }};
+    { GLFW_CONTEXT_VERSION_MINOR, 1 },
+    { GLFW_VISIBLE, GL_FALSE }};
 
   for( auto[hint, value] : windowHints )
     glfwWindowHint( hint, value );
@@ -132,7 +166,7 @@ int main( int arc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+  glfwSetFramebufferSizeCallback(window, _glfwFrameSizeCallback);
   glfwMakeContextCurrent( window );
 
   //------------------------------------------------------------------------------
@@ -208,6 +242,13 @@ int main( int arc, char *argv[] )
     };
     GLenum format = formatByNumChannels[image.nChannels - 1];
 
+    // odd-width RGB source images are misaligned byte-wise without these next four lines
+    // thanks: https://stackoverflow.com/a/7381121
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+
     glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0, format, GL_UNSIGNED_BYTE, image.pixels );
 
     if( image.nChannels < 3 )
@@ -226,7 +267,22 @@ int main( int arc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-//  glfwSetWindow
+  glfwSetWindowTitle(window, imageFilename.c_str());
+
+  //------------------------------------------------------------------------------
+
+  {
+    float xscale=1.f, yscale=1.f;
+    glfwGetWindowContentScale(window, &xscale, &yscale);
+    const int scaledWidth = int(xscale * float(image.width));
+    const int scaledHeight = int(yscale * float(image.height));
+    glfwSetWindowSize(window, scaledWidth, scaledHeight);
+  }
+  glfwSetWindowAspectRatio(window, image.width, image.height);
+
+  //------------------------------------------------------------------------------
+
+  glfwShowWindow(window);
 
   //------------------------------------------------------------------------------
 
@@ -251,4 +307,6 @@ int main( int arc, char *argv[] )
     glfwSwapBuffers( window );
     glfwPollEvents();
   }
+
+  return 0;
 }
