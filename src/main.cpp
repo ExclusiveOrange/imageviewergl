@@ -26,6 +26,8 @@ struct Destroyer
   ~Destroyer() { fnOnDestroy(); }
 };
 
+//------------------------------------------------------------------------------
+
 enum class RenderThreadState { shouldWait, shouldRender, shouldQuit };
 struct FrameSize { int width, height; };
 
@@ -301,6 +303,7 @@ int main( int argc, char *argv[] )
       [window]
       {
         glfwMakeContextCurrent( window );
+        glfwSwapInterval( 0 );
 
         for( ;; )
         {
