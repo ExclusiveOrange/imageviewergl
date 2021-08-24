@@ -24,10 +24,15 @@ struct Destroyer
   ~Destroyer() { fnOnDestroy(); }
 };
 
-struct Global
+enum class RenderThreadState { shouldWait, shouldRender, shouldQuit };
+
+struct
 {
-  bool needsRefresh{};
-} global;
+  RenderThreadState state = RenderThreadState::shouldRender;
+  std::mutex mutex;
+  std::condition_variable condVar;
+
+} renderThreadShared;
 
 //------------------------------------------------------------------------------
 
@@ -43,9 +48,9 @@ void _glfwFrameSizeCallback( GLFWwindow *window, int width, int height )
 
 void _glfwWindowRefreshCallback( GLFWwindow *window )
 {
-  // TODO: figure out how to render from another thread
-  //       might not be possible on Mac
-  global.needsRefresh = true;
+  std::unique_lock lk( renderThreadShared.mutex );
+  renderThreadShared.state = RenderThreadState::shouldRender;
+  renderThreadShared.condVar.notify_one();
 }
 
 //------------------------------------------------------------------------------
@@ -284,6 +289,38 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
+  glfwMakeContextCurrent( NULL );
+
+  std::thread renderThread{
+      [window]
+      {
+        glfwMakeContextCurrent( window );
+
+        for( ;; )
+        {
+          std::unique_lock lk( renderThreadShared.mutex );
+          renderThreadShared.condVar
+                            .wait( lk, [&] { return renderThreadShared.state != RenderThreadState::shouldWait; } );
+
+          if( renderThreadShared.state == RenderThreadState::shouldQuit )
+          {
+            std::cout << "renderThread quitting" << std::endl;
+            break;
+          }
+
+          static uint8_t i{};
+
+          std::cout << "renderThread: " << (int){ i++ } << std::endl;
+
+          glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
+          glfwSwapBuffers( window );
+
+          renderThreadShared.state = RenderThreadState::shouldWait;
+        }
+      }};
+
+  //------------------------------------------------------------------------------
+
   // Event loop
   while( !glfwWindowShouldClose( window ))
   {
@@ -294,18 +331,19 @@ int main( int argc, char *argv[] )
 //    glClearColor( 0.5f, 0.0f, 0.0f, 1.0f );
 //    glClear( GL_COLOR_BUFFER_BIT );
 
-    if( global.needsRefresh )
-    {
-      glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
-      glfwSwapBuffers( window );
-      global.needsRefresh = false;
-      static int i{};
-      std::cout << (int)(i++) << std::endl;
-    }
+//    glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
 
-//    glfwPollEvents();
+//    glfwSwapBuffers( window );
     glfwWaitEvents();
   }
+
+  {
+    std::unique_lock lk( renderThreadShared.mutex );
+    renderThreadShared.state = RenderThreadState::shouldQuit;
+    renderThreadShared.condVar.notify_one();
+  }
+
+  renderThread.join();
 
   return 0;
 }
