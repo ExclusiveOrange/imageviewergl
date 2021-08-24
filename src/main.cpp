@@ -7,9 +7,11 @@
 #include <stb_image.h>
 
 #include <cassert>
+#include <condition_variable>
 #include <filesystem>
 #include <functional>
 #include <iostream>
+#include <mutex>
 #include <optional>
 #include <thread>
 
@@ -19,19 +21,20 @@ namespace
 {
 struct Destroyer
 {
-  const std::function< void( void ) > fnOnDestroy;
+  const std::function<void( void )> fnOnDestroy;
 
   ~Destroyer() { fnOnDestroy(); }
 };
 
 enum class RenderThreadState { shouldWait, shouldRender, shouldQuit };
+struct FrameSize { int width, height; };
 
 struct
 {
   RenderThreadState state = RenderThreadState::shouldRender;
   std::mutex mutex;
   std::condition_variable condVar;
-
+  std::optional<FrameSize> frameSizeUpdate;
 } renderThreadShared;
 
 //------------------------------------------------------------------------------
@@ -43,7 +46,10 @@ void _glfwErrorCallback( int error, const char *description )
 
 void _glfwFrameSizeCallback( GLFWwindow *window, int width, int height )
 {
-  glViewport( 0, 0, width, height );
+  std::unique_lock lk( renderThreadShared.mutex );
+  renderThreadShared.frameSizeUpdate = { width, height };
+//  renderThreadShared.state = RenderThreadState::shouldRender;
+//  renderThreadShared.condVar.notify_one();
 }
 
 void _glfwWindowRefreshCallback( GLFWwindow *window )
@@ -55,11 +61,11 @@ void _glfwWindowRefreshCallback( GLFWwindow *window )
 
 //------------------------------------------------------------------------------
 
-std::optional< GLuint >
+std::optional<GLuint>
 loadShader( const char *filename, GLenum shaderType )
 {
   GLuint shader = glCreateShader( shaderType );
-  const std::vector< char > source = readFile( filename );
+  const std::vector<char> source = readFile( filename );
   const GLchar *pShaderSource[] = { source.data() }; // need GLchar**
   const GLint shaderSourceLength[] = { (GLint)source.size() };
   glShaderSource( shader, 1, pShaderSource, shaderSourceLength );
@@ -73,7 +79,7 @@ loadShader( const char *filename, GLenum shaderType )
   GLint logLength = 0;
   glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &logLength );
   // The logLength includes the NULL character
-  std::vector< GLchar > errorLog( logLength );
+  std::vector<GLchar> errorLog( logLength );
   glGetShaderInfoLog( shader, logLength, &logLength, &errorLog[0] );
   std::cout << "bad shader (" << filename << ") " << errorLog.data() << std::endl;
 
@@ -123,7 +129,7 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  std::optional< Image > maybeImage;
+  std::optional<Image> maybeImage;
   std::thread imageLoadingThread{
       [&imageFilename, &maybeImage]
       {
@@ -181,7 +187,7 @@ int main( int argc, char *argv[] )
   //------------------------------------------------------------------------------
 
   GLuint vertShader{};
-  if( std::optional< GLuint > maybeVertShader = loadShader( "../shaders/texture.vert", GL_VERTEX_SHADER ))
+  if( std::optional<GLuint> maybeVertShader = loadShader( "../shaders/texture.vert", GL_VERTEX_SHADER ))
     vertShader = *maybeVertShader;
   else
     return 1;
@@ -190,7 +196,7 @@ int main( int argc, char *argv[] )
   //------------------------------------------------------------------------------
 
   GLuint fragShader{};
-  if( std::optional< GLuint > maybeFragShader = loadShader( "../shaders/texture.frag", GL_FRAGMENT_SHADER ))
+  if( std::optional<GLuint> maybeFragShader = loadShader( "../shaders/texture.frag", GL_FRAGMENT_SHADER ))
     fragShader = *maybeFragShader;
   else
     return 1;
@@ -289,7 +295,7 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  glfwMakeContextCurrent( NULL );
+  glfwMakeContextCurrent( nullptr );
 
   std::thread renderThread{
       [window]
@@ -303,14 +309,11 @@ int main( int argc, char *argv[] )
                             .wait( lk, [&] { return renderThreadShared.state != RenderThreadState::shouldWait; } );
 
           if( renderThreadShared.state == RenderThreadState::shouldQuit )
-          {
-            std::cout << "renderThread quitting" << std::endl;
             break;
-          }
 
-          static uint8_t i{};
-
-          std::cout << "renderThread: " << (int){ i++ } << std::endl;
+          if( std::optional<FrameSize>
+              maybeFrameSize = std::exchange( renderThreadShared.frameSizeUpdate, std::nullopt ))
+            glViewport( 0, 0, maybeFrameSize->width, maybeFrameSize->height );
 
           glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
           glfwSwapBuffers( window );
@@ -323,19 +326,7 @@ int main( int argc, char *argv[] )
 
   // Event loop
   while( !glfwWindowShouldClose( window ))
-  {
-    // TODO: wait for signal to draw a frame; maybe wait on a condition variable or something
-
-
-    // Clear the screen to black
-//    glClearColor( 0.5f, 0.0f, 0.0f, 1.0f );
-//    glClear( GL_COLOR_BUFFER_BIT );
-
-//    glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
-
-//    glfwSwapBuffers( window );
     glfwWaitEvents();
-  }
 
   {
     std::unique_lock lk( renderThreadShared.mutex );
