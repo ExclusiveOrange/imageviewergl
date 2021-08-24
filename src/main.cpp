@@ -17,6 +17,20 @@
 
 namespace
 {
+struct Destroyer
+{
+  const std::function< void( void ) > fnOnDestroy;
+
+  ~Destroyer() { fnOnDestroy(); }
+};
+
+struct Global
+{
+  bool needsRefresh{};
+} global;
+
+//------------------------------------------------------------------------------
+
 void _glfwErrorCallback( int error, const char *description )
 {
   std::cerr << "GLFW error: " << error << ": " << description << std::endl;
@@ -27,11 +41,20 @@ void _glfwFrameSizeCallback( GLFWwindow *window, int width, int height )
   glViewport( 0, 0, width, height );
 }
 
-std::optional<GLuint>
+void _glfwWindowRefreshCallback( GLFWwindow *window )
+{
+  // TODO: figure out how to render from another thread
+  //       might not be possible on Mac
+  global.needsRefresh = true;
+}
+
+//------------------------------------------------------------------------------
+
+std::optional< GLuint >
 loadShader( const char *filename, GLenum shaderType )
 {
   GLuint shader = glCreateShader( shaderType );
-  const std::vector<char> source = readFile( filename );
+  const std::vector< char > source = readFile( filename );
   const GLchar *pShaderSource[] = { source.data() }; // need GLchar**
   const GLint shaderSourceLength[] = { (GLint)source.size() };
   glShaderSource( shader, 1, pShaderSource, shaderSourceLength );
@@ -45,7 +68,7 @@ loadShader( const char *filename, GLenum shaderType )
   GLint logLength = 0;
   glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &logLength );
   // The logLength includes the NULL character
-  std::vector<GLchar> errorLog( logLength );
+  std::vector< GLchar > errorLog( logLength );
   glGetShaderInfoLog( shader, logLength, &logLength, &errorLog[0] );
   std::cout << "bad shader (" << filename << ") " << errorLog.data() << std::endl;
 
@@ -53,13 +76,6 @@ loadShader( const char *filename, GLenum shaderType )
 
   return {};
 }
-
-struct Destroyer
-{
-  const std::function<void( void )> fnOnDestroy;
-
-  ~Destroyer() { fnOnDestroy(); }
-};
 } // namespace
 
 //==============================================================================
@@ -100,22 +116,18 @@ int main( int argc, char *argv[] )
     stbi_uc *pixels{};
   };
 
-  struct
-  {
-    std::optional<Image> maybeImage;
-  } threadShared;
-
   //------------------------------------------------------------------------------
 
+  std::optional< Image > maybeImage;
   std::thread imageLoadingThread{
-      [&imageFilename, &threadShared]
+      [&imageFilename, &maybeImage]
       {
         Image image;
         image.pixels = stbi_load( imageFilename.c_str(), &image.width, &image.height, &image.nChannels, 0 );
         if( !image.pixels )
           std::cerr << "failed to load image " << imageFilename << "\nbecause: " << stbi_failure_reason() << std::endl;
         else
-          threadShared.maybeImage = image;
+          maybeImage = image;
       }};
 
   //------------------------------------------------------------------------------
@@ -150,6 +162,7 @@ int main( int argc, char *argv[] )
   //------------------------------------------------------------------------------
 
   glfwSetFramebufferSizeCallback( window, _glfwFrameSizeCallback );
+  glfwSetWindowRefreshCallback( window, _glfwWindowRefreshCallback );
   glfwMakeContextCurrent( window );
 
   //------------------------------------------------------------------------------
@@ -163,7 +176,7 @@ int main( int argc, char *argv[] )
   //------------------------------------------------------------------------------
 
   GLuint vertShader{};
-  if( std::optional<GLuint> maybeVertShader = loadShader( "../shaders/texture.vert", GL_VERTEX_SHADER ))
+  if( std::optional< GLuint > maybeVertShader = loadShader( "../shaders/texture.vert", GL_VERTEX_SHADER ))
     vertShader = *maybeVertShader;
   else
     return 1;
@@ -172,7 +185,7 @@ int main( int argc, char *argv[] )
   //------------------------------------------------------------------------------
 
   GLuint fragShader{};
-  if( std::optional<GLuint> maybeFragShader = loadShader( "../shaders/texture.frag", GL_FRAGMENT_SHADER ))
+  if( std::optional< GLuint > maybeFragShader = loadShader( "../shaders/texture.frag", GL_FRAGMENT_SHADER ))
     fragShader = *maybeFragShader;
   else
     return 1;
@@ -205,11 +218,11 @@ int main( int argc, char *argv[] )
 
   imageLoadingThread.join();
 
-  if( !threadShared.maybeImage )
+  if( !maybeImage )
     return 1;
 
-  Image image = *threadShared.maybeImage;
-  threadShared.maybeImage.reset();
+  Image image = *maybeImage;
+  maybeImage.reset();
 
   //------------------------------------------------------------------------------
 
@@ -276,14 +289,22 @@ int main( int argc, char *argv[] )
   {
     // TODO: wait for signal to draw a frame; maybe wait on a condition variable or something
 
+
     // Clear the screen to black
 //    glClearColor( 0.5f, 0.0f, 0.0f, 1.0f );
 //    glClear( GL_COLOR_BUFFER_BIT );
 
-    glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
+    if( global.needsRefresh )
+    {
+      glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
+      glfwSwapBuffers( window );
+      global.needsRefresh = false;
+      static int i{};
+      std::cout << (int)(i++) << std::endl;
+    }
 
-    glfwSwapBuffers( window );
-    glfwPollEvents();
+//    glfwPollEvents();
+    glfwWaitEvents();
   }
 
   return 0;
