@@ -17,35 +17,21 @@
 
 namespace
 {
-void _glfwErrorCallback(int error, const char *description )
+void _glfwErrorCallback( int error, const char *description )
 {
   std::cerr << "GLFW error: " << error << ": " << description << std::endl;
 }
 
-void _glfwFrameSizeCallback(GLFWwindow* window, int width, int height)
+void _glfwFrameSizeCallback( GLFWwindow *window, int width, int height )
 {
-  glViewport(0, 0, width, height);
+  glViewport( 0, 0, width, height );
 }
 
-std::filesystem::path
-getExePath(const char *argv0)
-{
-  return std::filesystem::current_path() / argv0;
-}
-
-void
-setWorkingDirectoryToExecutable(const char *argv0)
-{
-  std::filesystem::path fullExePath = std::filesystem::current_path() / argv0;
-  fullExePath.remove_filename();
-  std::filesystem::current_path() = fullExePath;
-}
-
-std::optional< GLuint >
+std::optional<GLuint>
 loadShader( const char *filename, GLenum shaderType )
 {
   GLuint shader = glCreateShader( shaderType );
-  const std::vector< char > source = readFile( filename );
+  const std::vector<char> source = readFile( filename );
   const GLchar *pShaderSource[] = { source.data() }; // need GLchar**
   const GLint shaderSourceLength[] = { (GLint)source.size() };
   glShaderSource( shader, 1, pShaderSource, shaderSourceLength );
@@ -56,11 +42,11 @@ loadShader( const char *filename, GLenum shaderType )
   if( isCompiled == GL_TRUE )
     return shader;
 
-  GLint maxLength = 0;
-  glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &maxLength );
-  // The maxLength includes the NULL character
-  std::vector< GLchar > errorLog( maxLength );
-  glGetShaderInfoLog( shader, maxLength, &maxLength, &errorLog[0] );
+  GLint logLength = 0;
+  glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &logLength );
+  // The logLength includes the NULL character
+  std::vector<GLchar> errorLog( logLength );
+  glGetShaderInfoLog( shader, logLength, &logLength, &errorLog[0] );
   std::cout << "bad shader (" << filename << ") " << errorLog.data() << std::endl;
 
   glDeleteShader( shader );
@@ -70,7 +56,8 @@ loadShader( const char *filename, GLenum shaderType )
 
 struct Destroyer
 {
-  const std::function< void( void ) > fnOnDestroy;
+  const std::function<void( void )> fnOnDestroy;
+
   ~Destroyer() { fnOnDestroy(); }
 };
 } // namespace
@@ -94,13 +81,13 @@ int main( int argc, char *argv[] )
 
   // remember initial working directory (might be not exe directory)
   const std::filesystem::path initialWorkingDirectory = std::filesystem::current_path();
-  Destroyer revertWorkingDirectory{ [&]{ std::filesystem::current_path( initialWorkingDirectory ); }};
+  Destroyer revertWorkingDirectory{ [&] { std::filesystem::current_path( initialWorkingDirectory ); }};
 
   {
     // set working directory to this exe (so dll's can be found, at least on Windows)
     std::filesystem::path fullExePath = std::filesystem::current_path() / argv[0];
     fullExePath.remove_filename();
-    std::filesystem::current_path(fullExePath);
+    std::filesystem::current_path( fullExePath );
   }
 
   //------------------------------------------------------------------------------
@@ -115,25 +102,25 @@ int main( int argc, char *argv[] )
 
   struct
   {
-    std::optional< Image > maybeImage;
+    std::optional<Image> maybeImage;
   } threadShared;
 
   //------------------------------------------------------------------------------
 
   std::thread imageLoadingThread{
-      [&imageFilename,&threadShared]
+      [&imageFilename, &threadShared]
       {
         Image image;
         image.pixels = stbi_load( imageFilename.c_str(), &image.width, &image.height, &image.nChannels, 0 );
         if( !image.pixels )
           std::cerr << "failed to load image " << imageFilename << "\nbecause: " << stbi_failure_reason() << std::endl;
         else
-          threadShared.maybeImage.emplace( image );
+          threadShared.maybeImage = image;
       }};
 
   //------------------------------------------------------------------------------
 
-  glfwSetErrorCallback(_glfwErrorCallback);
+  glfwSetErrorCallback( _glfwErrorCallback );
 
   //------------------------------------------------------------------------------
 
@@ -146,15 +133,11 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  struct { int hint, value; } windowHints[]{
-    { GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE },
-    { GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE },
-    { GLFW_CONTEXT_VERSION_MAJOR, 4 },
-    { GLFW_CONTEXT_VERSION_MINOR, 1 },
-    { GLFW_VISIBLE, GL_FALSE }};
-
-  for( auto[hint, value] : windowHints )
-    glfwWindowHint( hint, value );
+  glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
+  glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE );
+  glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
+  glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
+  glfwWindowHint( GLFW_VISIBLE, GL_FALSE );
 
   GLFWwindow *window = glfwCreateWindow( 640, 480, "My Title", nullptr, nullptr );
   if( !window )
@@ -166,7 +149,7 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  glfwSetFramebufferSizeCallback(window, _glfwFrameSizeCallback);
+  glfwSetFramebufferSizeCallback( window, _glfwFrameSizeCallback );
   glfwMakeContextCurrent( window );
 
   //------------------------------------------------------------------------------
@@ -180,7 +163,7 @@ int main( int argc, char *argv[] )
   //------------------------------------------------------------------------------
 
   GLuint vertShader{};
-  if( std::optional< GLuint > maybeVertShader = loadShader( "../shaders/texture.vert", GL_VERTEX_SHADER ))
+  if( std::optional<GLuint> maybeVertShader = loadShader( "../shaders/texture.vert", GL_VERTEX_SHADER ))
     vertShader = *maybeVertShader;
   else
     return 1;
@@ -189,7 +172,7 @@ int main( int argc, char *argv[] )
   //------------------------------------------------------------------------------
 
   GLuint fragShader{};
-  if( std::optional< GLuint > maybeFragShader = loadShader( "../shaders/texture.frag", GL_FRAGMENT_SHADER ))
+  if( std::optional<GLuint> maybeFragShader = loadShader( "../shaders/texture.frag", GL_FRAGMENT_SHADER ))
     fragShader = *maybeFragShader;
   else
     return 1;
@@ -234,20 +217,15 @@ int main( int argc, char *argv[] )
   glGenTextures( 1, &texture );
   glBindTexture( GL_TEXTURE_2D, texture );
   {
-    GLenum formatByNumChannels[4]{
-        GL_RED,
-        GL_RG,
-        GL_RGB,
-        GL_RGBA
-    };
+    const GLenum formatByNumChannels[4]{ GL_RED, GL_RG, GL_RGB, GL_RGBA };
     GLenum format = formatByNumChannels[image.nChannels - 1];
 
     // odd-width RGB source images are misaligned byte-wise without these next four lines
     // thanks: https://stackoverflow.com/a/7381121
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+    glPixelStorei( GL_UNPACK_ALIGNMENT, 1 );
+    glPixelStorei( GL_UNPACK_ROW_LENGTH, 0 );
+    glPixelStorei( GL_UNPACK_SKIP_PIXELS, 0 );
+    glPixelStorei( GL_UNPACK_SKIP_ROWS, 0 );
 
     glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0, format, GL_UNSIGNED_BYTE, image.pixels );
 
@@ -267,22 +245,22 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  glfwSetWindowTitle(window, imageFilename.c_str());
+  glfwSetWindowTitle( window, imageFilename.c_str());
 
   //------------------------------------------------------------------------------
 
   {
-    float xscale=1.f, yscale=1.f;
-    glfwGetWindowContentScale(window, &xscale, &yscale);
-    const int scaledWidth = int(xscale * float(image.width));
-    const int scaledHeight = int(yscale * float(image.height));
-    glfwSetWindowSize(window, scaledWidth, scaledHeight);
+    float xscale = 1.f, yscale = 1.f;
+    glfwGetWindowContentScale( window, &xscale, &yscale );
+    const int scaledWidth = int( xscale * float( image.width ));
+    const int scaledHeight = int( yscale * float( image.height ));
+    glfwSetWindowSize( window, scaledWidth, scaledHeight );
   }
-  glfwSetWindowAspectRatio(window, image.width, image.height);
+  glfwSetWindowAspectRatio( window, image.width, image.height );
 
   //------------------------------------------------------------------------------
 
-  glfwShowWindow(window);
+  glfwShowWindow( window );
 
   //------------------------------------------------------------------------------
 
