@@ -163,6 +163,7 @@ int main( int argc, char *argv[] )
   glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
   glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
   glfwWindowHint( GLFW_VISIBLE, GL_FALSE );
+  glfwWindowHint( GLFW_TRANSPARENT_FRAMEBUFFER, 1 );
 
   GLFWwindow *window = glfwCreateWindow( 640, 480, "My Title", nullptr, nullptr );
   if( !window )
