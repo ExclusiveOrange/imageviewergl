@@ -2,6 +2,5 @@
 
 struct IGlWindow
 {
-  // TODO
   virtual ~IGlWindow() = default;
 };

@@ -5,4 +5,4 @@
 #include <memory>
 
 std::unique_ptr< IGlWindow >
-makeGlfwWindow();
+makeGlfwWindow() noexcept( false ); // may throw ErrorString
