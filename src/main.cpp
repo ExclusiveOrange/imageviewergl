@@ -1,17 +1,14 @@
 #include "readFile.hpp"
+#include "Destroyer.hpp"
+#include "GlfwWindow.hpp"
 
 #define GL_SILENCE_DEPRECATION // MacOS has deprecated OpenGL - it still works up to 4.1 for now
 #include <gl/glew.h>
-#include <GLFW/glfw3.h>
 
 #include <stb_image.h>
 
-#include <cassert>
-#include <condition_variable>
 #include <filesystem>
-#include <functional>
 #include <iostream>
-#include <mutex>
 #include <optional>
 #include <thread>
 
@@ -19,49 +16,6 @@
 
 namespace
 {
-struct Destroyer
-{
-  const std::function< void( void ) > fnOnDestroy;
-
-  ~Destroyer() { fnOnDestroy(); }
-};
-
-//------------------------------------------------------------------------------
-
-enum class RenderThreadState { shouldWait, shouldRender, shouldQuit };
-struct FrameSize { int width, height; };
-
-struct
-{
-  RenderThreadState state = RenderThreadState::shouldRender;
-  std::mutex mutex;
-  std::condition_variable condVar;
-  std::optional< FrameSize > frameSizeUpdate;
-} renderThreadShared;
-
-//------------------------------------------------------------------------------
-
-void _glfwErrorCallback( int error, const char *description )
-{
-  std::cerr << "GLFW error: " << error << ": " << description << std::endl;
-}
-
-void _glfwFrameSizeCallback( GLFWwindow *window, int width, int height )
-{
-  std::unique_lock lk( renderThreadShared.mutex );
-  renderThreadShared.frameSizeUpdate = { width, height };
-//  renderThreadShared.state = RenderThreadState::shouldRender;
-//  renderThreadShared.condVar.notify_one();
-}
-
-void _glfwWindowRefreshCallback( GLFWwindow *window )
-{
-  std::unique_lock lk( renderThreadShared.mutex );
-  renderThreadShared.state = RenderThreadState::shouldRender;
-  renderThreadShared.condVar.notify_one();
-}
-
-//------------------------------------------------------------------------------
 
 std::optional< GLuint >
 loadShader( const char *filename, GLenum shaderType )
@@ -90,39 +44,36 @@ loadShader( const char *filename, GLenum shaderType )
   return {};
 }
 
-void centerGlfwWindow( GLFWwindow *window, GLFWmonitor *monitor )
-{
-  struct { int x, y, w, h; } monitorWorkArea;
-  glfwGetMonitorWorkarea( monitor, &monitorWorkArea.x, &monitorWorkArea.y, &monitorWorkArea.w, &monitorWorkArea.h );
-  struct { int x, y; } monitorWorkAreaCenter{
-      monitorWorkArea.w / 2 + monitorWorkArea.x,
-      monitorWorkArea.h / 2 + monitorWorkArea.y };
-
-  struct { int w, h; } windowSize;
-  glfwGetWindowSize( window, &windowSize.w, &windowSize.h );
-
-  struct { int l, t, r, b; } frameSize;
-  glfwGetWindowFrameSize( window, &frameSize.l, &frameSize.t, &frameSize.r, &frameSize.b );
-
-  struct { int w, h; } fullWindowSize{
-      windowSize.w + frameSize.l + frameSize.r,
-      windowSize.h + frameSize.t + frameSize.b };
-
-  struct { int x, y; } windowContentPos{
-      monitorWorkAreaCenter.x - fullWindowSize.w / 2 + frameSize.l,
-      monitorWorkAreaCenter.y - fullWindowSize.h / 2 + frameSize.t };
-
-  glfwSetWindowPos( window, windowContentPos.x, windowContentPos.y );
-}
+//void centerGlfwWindow( GLFWwindow *window, GLFWmonitor *monitor )
+//{
+//  struct { int x, y, w, h; } monitorWorkArea;
+//  glfwGetMonitorWorkarea( monitor, &monitorWorkArea.x, &monitorWorkArea.y, &monitorWorkArea.w, &monitorWorkArea.h );
+//  struct { int x, y; } monitorWorkAreaCenter{
+//      monitorWorkArea.w / 2 + monitorWorkArea.x,
+//      monitorWorkArea.h / 2 + monitorWorkArea.y };
+//
+//  struct { int w, h; } windowSize;
+//  glfwGetWindowSize( window, &windowSize.w, &windowSize.h );
+//
+//  struct { int l, t, r, b; } frameSize;
+//  glfwGetWindowFrameSize( window, &frameSize.l, &frameSize.t, &frameSize.r, &frameSize.b );
+//
+//  struct { int w, h; } fullWindowSize{
+//      windowSize.w + frameSize.l + frameSize.r,
+//      windowSize.h + frameSize.t + frameSize.b };
+//
+//  struct { int x, y; } windowContentPos{
+//      monitorWorkAreaCenter.x - fullWindowSize.w / 2 + frameSize.l,
+//      monitorWorkAreaCenter.y - fullWindowSize.h / 2 + frameSize.t };
+//
+//  glfwSetWindowPos( window, windowContentPos.x, windowContentPos.y );
+//}
 } // namespace
 
 //==============================================================================
 
 int main( int argc, char *argv[] )
 {
-  // TODO: refactor into separate functions; maybe with a State struct or something to share data...
-  //       maybe put all this in an App class... something to organize it better
-
   // TODO: add "dear imgui", for eventual messages or image information or application settings
 
   if( argc != 2 )
@@ -170,58 +121,7 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  glfwSetErrorCallback( _glfwErrorCallback );
-
-  //------------------------------------------------------------------------------
-
-  if( !glfwInit())
-  {
-    std::cerr << "glfwInit() failed" << std::endl;
-    return 1;
-  }
-  Destroyer _glfwInit{ glfwTerminate };
-
-  //------------------------------------------------------------------------------
-
-  glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
-  glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE );
-  glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
-  glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
-  glfwWindowHint( GLFW_VISIBLE, GLFW_FALSE );
-  glfwWindowHint( GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE );
-  glfwWindowHint( GLFW_DECORATED, GLFW_TRUE );
-
-  GLFWwindow *window = glfwCreateWindow( 640, 480, "My Title", nullptr, nullptr );
-  if( !window )
-  {
-    std::cerr << "glfwCreateWindow(..) failed" << std::endl;
-    return 1;
-  }
-  Destroyer _glfwCreateWindow{ [window] { glfwDestroyWindow( window ); }};
-
-  //------------------------------------------------------------------------------
-
-  // DELETE: get current monitor work area and print it
-  {
-    int xpos, ypos, width, height;
-    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
-    glfwGetMonitorWorkarea( monitor, &xpos, &ypos, &width, &height );
-    std::cout << "monitor work area: {" << xpos << ", " << ypos << ", " << width << ", " << height << std::endl;
-  }
-
-  //------------------------------------------------------------------------------
-
-  glfwSetFramebufferSizeCallback( window, _glfwFrameSizeCallback );
-  glfwSetWindowRefreshCallback( window, _glfwWindowRefreshCallback );
-  glfwMakeContextCurrent( window );
-
-  //------------------------------------------------------------------------------
-
-  if( GLEW_OK != glewInit())
-  {
-    std::cerr << "glewInit() failed" << std::endl;
-    return 1;
-  }
+  std::unique_ptr< IGlWindow > window = makeGlfwWindow();
 
   //------------------------------------------------------------------------------
 
@@ -308,23 +208,23 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  glfwSetWindowTitle( window, imageFilename.c_str());
+  window->setTitle( imageFilename.c_str());
 
   //------------------------------------------------------------------------------
 
   {
-    float xscale = 1.f, yscale = 1.f;
-    glfwGetWindowContentScale( window, &xscale, &yscale );
+    auto [xscale, yscale] = window->getContentScale();
     const int scaledWidth = int( xscale * float( image.width ));
     const int scaledHeight = int( yscale * float( image.height ));
-    glfwSetWindowSize( window, scaledWidth, scaledHeight );
+    window->setContentSize( scaledWidth, scaledHeight );
   }
-  glfwSetWindowAspectRatio( window, image.width, image.height );
-  centerGlfwWindow( window, glfwGetPrimaryMonitor());
+  window->setContentAspectRatio( image.width, image.height );
+  // TODO: recreate centering mechanism using IGlWindow methods
+  //centerGlfwWindow( window, glfwGetPrimaryMonitor());
 
   //------------------------------------------------------------------------------
 
-  glfwShowWindow( window );
+  window->show();
 
   //------------------------------------------------------------------------------
 
@@ -335,47 +235,13 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  glfwMakeContextCurrent( nullptr );
-
-  std::thread renderThread{
-      [window]
+  window->setRenderFunction(
+      []
       {
-        glfwMakeContextCurrent( window );
-        glfwSwapInterval( 0 );
-
-        for( ;; )
-        {
-          std::unique_lock lk( renderThreadShared.mutex );
-          renderThreadShared.condVar
-                            .wait( lk, [&] { return renderThreadShared.state != RenderThreadState::shouldWait; } );
-
-          if( renderThreadShared.state == RenderThreadState::shouldQuit )
-            break;
-
-          if( std::optional< FrameSize >
-              maybeFrameSize = std::exchange( renderThreadShared.frameSizeUpdate, std::nullopt ))
-            glViewport( 0, 0, maybeFrameSize->width, maybeFrameSize->height );
-
-          glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
-          glfwSwapBuffers( window );
-
-          renderThreadShared.state = RenderThreadState::shouldWait;
-        }
-      }};
+        glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
+      });
 
   //------------------------------------------------------------------------------
 
-  // Event loop
-  while( !glfwWindowShouldClose( window ))
-    glfwWaitEvents();
-
-  {
-    std::unique_lock lk( renderThreadShared.mutex );
-    renderThreadShared.state = RenderThreadState::shouldQuit;
-    renderThreadShared.condVar.notify_one();
-  }
-
-  renderThread.join();
-
-  return 0;
+  window->enterEventLoop();
 }
