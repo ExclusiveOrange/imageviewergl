@@ -81,7 +81,7 @@ struct GlfwWindow : public IGlWindow
     glfwWindowHint( GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE );
     glfwWindowHint( GLFW_DECORATED, GLFW_TRUE );
 
-    window = glfwCreateWindow( 640, 480, "My Title", nullptr, nullptr );
+    window = glfwCreateWindow( 640, 480, "", nullptr, nullptr );
     if( !window )
       throw ErrorString( "glfwCreateWindow(..) failed" );
 
@@ -104,11 +104,15 @@ struct GlfwWindow : public IGlWindow
 
   void startRenderThread()
   {
+    // deactivate the OpenGL context in the current thread
+    // before making it active in the render thread, below
     glfwMakeContextCurrent( nullptr );
 
     renderThread = std::thread{
         [window = this->window, &renderThreadShared = this->renderThreadShared]
         {
+          // activate the OpenGL context in this thread (the render thread);
+          // however it is now unusable in the original thread
           glfwMakeContextCurrent( window );
 
           auto waitPredicate =
@@ -118,8 +122,11 @@ struct GlfwWindow : public IGlWindow
           auto whileLocked =
               [&shouldQuit, window]( RenderThreadShared &rts )
               {
-                if((shouldQuit = (rts.state == RenderThreadState::shouldQuit)))
+                if( rts.state == RenderThreadState::shouldQuit )
+                {
+                  shouldQuit = true;
                   return;
+                }
 
                 if( rts.frameSizeUpdate )
                 {
