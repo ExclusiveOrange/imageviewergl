@@ -158,7 +158,8 @@ struct GlfwWindow : public IGlWindow
 
   //------------------------------------------------------------------------------
 
-  GlfwWindow()
+  GlfwWindow(
+      std::future< makeGlRenderer_t > futureMakeGlRenderer )
   {
     startGlfw();
     createGlfwWindow();
@@ -223,7 +224,8 @@ struct GlfwWindow : public IGlWindow
 }
 
 std::unique_ptr< IGlWindow >
-makeGlfwWindow()
+makeGlfwWindow(
+   std::future< makeGlRenderer_t > futureMakeGlRenderer )
 {
-  return std::make_unique< GlfwWindow >();
+  return std::make_unique< GlfwWindow >( futureMakeGlRender );
 }

@@ -72,6 +72,39 @@ loadShader( const char *filename, GLenum shaderType )
 
 //==============================================================================
 
+void
+prepareMakeGlRenderer(
+    std::string imageFilename,
+    std::promise< makeGlRenderer_t > promiseMakeGlRenderer )
+{
+  struct Image
+  {
+    int width{}, height{}, nChannels{};
+    stbi_uc *pixels{};
+  };
+
+  //------------------------------------------------------------------------------
+
+  std::optional< Image > maybeImage;
+  std::thread imageLoadingThread{
+      [&imageFilename, &maybeImage]
+      {
+        Image image;
+        image.pixels = stbi_load( imageFilename.c_str(), &image.width, &image.height, &image.nChannels, 0 );
+        if( !image.pixels )
+          std::cerr << "failed to load image " << imageFilename << "\nbecause: " << stbi_failure_reason() << std::endl;
+        else
+          maybeImage = image;
+      }};
+
+  // TODO: define closure lambda:
+  //   (void) -> std::unique_ptr< IGlRenderer >
+  // NOTE: this
+  // TODO: set promise value
+}
+
+//==============================================================================
+
 int main( int argc, char *argv[] )
 {
   // TODO: add "dear imgui", for eventual messages or image information or application settings
@@ -99,29 +132,19 @@ int main( int argc, char *argv[] )
 
   std::string imageFilename = (initialWorkingDirectory / argv[1]).string();
 
-  struct Image
-  {
-    int width{}, height{}, nChannels{};
-    stbi_uc *pixels{};
-  };
+  //------------------------------------------------------------------------------
+
+  std::promise< makeGlRenderer_t > promiseMakeGlRenderer;
+  std::future< makeGlRenderer_t > futureMakeGlRenderer = promiseMakeGlRenderer.get_future();
+
+  std::thread preparingMakeGlRenderer{
+      prepareMakeGlRenderer,
+      imageFilename,
+      std::move( promiseMakeGlRenderer ) };
 
   //------------------------------------------------------------------------------
 
-  std::optional< Image > maybeImage;
-  std::thread imageLoadingThread{
-      [&imageFilename, &maybeImage]
-      {
-        Image image;
-        image.pixels = stbi_load( imageFilename.c_str(), &image.width, &image.height, &image.nChannels, 0 );
-        if( !image.pixels )
-          std::cerr << "failed to load image " << imageFilename << "\nbecause: " << stbi_failure_reason() << std::endl;
-        else
-          maybeImage = image;
-      }};
-
-  //------------------------------------------------------------------------------
-
-  std::unique_ptr< IGlWindow > window = makeGlfwWindow();
+  std::unique_ptr< IGlWindow > window = makeGlfwWindow( std::move( futureMakeGlRenderer ));
 
   //------------------------------------------------------------------------------
 
@@ -213,7 +236,7 @@ int main( int argc, char *argv[] )
   //------------------------------------------------------------------------------
 
   {
-    auto [xscale, yscale] = window->getContentScale();
+    auto[xscale, yscale] = window->getContentScale();
     const int scaledWidth = int( xscale * float( image.width ));
     const int scaledHeight = int( yscale * float( image.height ));
     window->setContentSize( scaledWidth, scaledHeight );
@@ -239,7 +262,7 @@ int main( int argc, char *argv[] )
       []
       {
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
-      });
+      } );
 
   //------------------------------------------------------------------------------
 
