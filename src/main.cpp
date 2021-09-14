@@ -1,6 +1,8 @@
 #include "readFile.hpp"
 #include "Destroyer.hpp"
 #include "GlfwWindow.hpp"
+#include "GlRenderer_ImageRenderer.hpp"
+#include "RawImage_StbImage.hpp"
 
 #define GL_SILENCE_DEPRECATION // MacOS has deprecated OpenGL - it still works up to 4.1 for now
 #include <gl/glew.h>
@@ -14,7 +16,6 @@
 
 namespace
 {
-
 std::optional< GLuint >
 makeShader(
     const std::vector< char > source,
@@ -37,7 +38,7 @@ makeShader(
   // The logLength includes the NULL character
   std::vector< GLchar > errorLog( logLength );
   glGetShaderInfoLog( shader, logLength, &logLength, &errorLog[0] );
-  throw std::runtime_error( errorLog.data() );
+  throw std::runtime_error( errorLog.data());
 
   glDeleteShader( shader );
 
@@ -69,39 +70,6 @@ makeShader(
 //  glfwSetWindowPos( window, windowContentPos.x, windowContentPos.y );
 //}
 } // namespace
-
-//==============================================================================
-
-void
-prepareMakeGlRenderer(
-    std::string imageFilename,
-    std::promise< makeGlRenderer_t > promiseMakeGlRenderer )
-{
-  struct Image
-  {
-    int width{}, height{}, nChannels{};
-    stbi_uc *pixels{};
-  };
-
-  //------------------------------------------------------------------------------
-
-  std::optional< Image > maybeImage;
-  std::thread imageLoadingThread{
-      [&imageFilename, &maybeImage]
-      {
-        Image image;
-        image.pixels = stbi_load( imageFilename.c_str(), &image.width, &image.height, &image.nChannels, 0 );
-        if( !image.pixels )
-          std::cerr << "failed to load image " << imageFilename << "\nbecause: " << stbi_failure_reason() << std::endl;
-        else
-          maybeImage = image;
-      }};
-
-  // TODO: define closure lambda:
-  //   (void) -> std::unique_ptr< IGlRenderer >
-  // NOTE: this
-  // TODO: set promise value
-}
 
 //==============================================================================
 
@@ -138,9 +106,43 @@ int main( int argc, char *argv[] )
   std::future< makeGlRenderer_t > futureMakeGlRenderer = promiseMakeGlRenderer.get_future();
 
   std::thread preparingMakeGlRenderer{
-      prepareMakeGlRenderer,
-      imageFilename,
-      std::move( promiseMakeGlRenderer ) };
+      [=, promise = std::move( promiseMakeGlRenderer )]() mutable
+      {
+        try
+        {
+          std::unique_ptr< IRawImage > rawImage =
+              makeRawImage_StbImage( imageFilename.c_str());
+
+        makeGlRenderer_t makeGlRenderer = std::make_unique< makeGlRenderer_fn_t >(
+            [rawImage = std::move( rawImage )] () mutable
+        { return makeGlRenderer_ImageRenderer( std::move( rawImage )); });
+
+        auto t = std::make_unique< int >( 5 );
+
+        makeGlRenderer_t x = std::make_unique< makeGlRenderer_fn_t >(
+            [t = std::move(t)] () mutable -> std::unique_ptr< IGlRenderer >
+                { return {}; })
+
+        auto makeGlRenderer_p = std::make_unique< makeGlRenderer_fn_t >(
+          new makeGlRenderer_fn_t( [rawImage = std::move( rawImage )] () mutable
+          { return makeGlRenderer_ImageRenderer( std::move( rawImage )); }));
+
+
+          makeGlRenderer_t makeGlRenderer = std::make_unique< std::function< std::unique_ptr< IGlRenderer >(void )>>(
+              new
+              [rawImage = std::move( rawImage )]() mutable
+              {
+                return makeGlRenderer_ImageRenderer( std::move( rawImage ));
+              }
+          );
+
+        promise.set_value( std::move( makeGlRenderer ));
+        }
+        catch( const std::exception &e )
+        {
+          promise.set_exception( std::make_exception_ptr( e ));
+        }
+      }};
 
   //------------------------------------------------------------------------------
 
@@ -148,7 +150,7 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  std::vector< char > vertShaderSource = readFile("../shaders/texture.vert");
+  std::vector< char > vertShaderSource = readFile( "../shaders/texture.vert" );
   GLuint vertShader{};
   if( std::optional< GLuint > maybeVertShader = makeShader( vertShaderSource, GL_VERTEX_SHADER ))
     vertShader = *maybeVertShader;
@@ -158,7 +160,7 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  std::vector< char > fragShaderSource = readFile("../shaders/texture.frag");
+  std::vector< char > fragShaderSource = readFile( "../shaders/texture.frag" );
   GLuint fragShader{};
   if( std::optional< GLuint > maybeFragShader = makeShader( fragShaderSource, GL_FRAGMENT_SHADER ))
     fragShader = *maybeFragShader;

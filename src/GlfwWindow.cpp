@@ -227,5 +227,5 @@ std::unique_ptr< IGlWindow >
 makeGlfwWindow(
    std::future< makeGlRenderer_t > futureMakeGlRenderer )
 {
-  return std::make_unique< GlfwWindow >( futureMakeGlRender );
+  return std::make_unique< GlfwWindow >( std::move( futureMakeGlRenderer ));
 }
