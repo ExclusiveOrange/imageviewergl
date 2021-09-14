@@ -5,8 +5,6 @@
 #define GL_SILENCE_DEPRECATION // MacOS has deprecated OpenGL - it still works up to 4.1 for now
 #include <gl/glew.h>
 
-#include <stb_image.h>
-
 #include <filesystem>
 #include <iostream>
 #include <optional>
@@ -18,30 +16,32 @@ namespace
 {
 
 std::optional< GLuint >
-loadShader( const char *filename, GLenum shaderType )
+makeShader(
+    const std::vector< char > source,
+    GLenum shaderType )
 {
-  GLuint shader = glCreateShader( shaderType );
-  const std::vector< char > source = readFile( filename );
   const GLchar *pShaderSource[] = { source.data() }; // need GLchar**
   const GLint shaderSourceLength[] = { (GLint)source.size() };
+  GLuint shader = glCreateShader( shaderType );
   glShaderSource( shader, 1, pShaderSource, shaderSourceLength );
 
   GLint isCompiled = 0;
   glCompileShader( shader );
   glGetShaderiv( shader, GL_COMPILE_STATUS, &isCompiled );
   if( isCompiled == GL_TRUE )
-    return shader;
+    return shader; // success
 
+  // error happened: get details and return nullopt
   GLint logLength = 0;
   glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &logLength );
   // The logLength includes the NULL character
   std::vector< GLchar > errorLog( logLength );
   glGetShaderInfoLog( shader, logLength, &logLength, &errorLog[0] );
-  std::cout << "bad shader (" << filename << ") " << errorLog.data() << std::endl;
+  throw std::runtime_error( errorLog.data() );
 
   glDeleteShader( shader );
 
-  return {};
+  return std::nullopt;
 }
 
 //void centerGlfwWindow( GLFWwindow *window, GLFWmonitor *monitor )
@@ -148,8 +148,9 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
+  std::vector< char > vertShaderSource = readFile("../shaders/texture.vert");
   GLuint vertShader{};
-  if( std::optional< GLuint > maybeVertShader = loadShader( "../shaders/texture.vert", GL_VERTEX_SHADER ))
+  if( std::optional< GLuint > maybeVertShader = makeShader( vertShaderSource, GL_VERTEX_SHADER ))
     vertShader = *maybeVertShader;
   else
     return 1;
@@ -157,8 +158,9 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
+  std::vector< char > fragShaderSource = readFile("../shaders/texture.frag");
   GLuint fragShader{};
-  if( std::optional< GLuint > maybeFragShader = loadShader( "../shaders/texture.frag", GL_FRAGMENT_SHADER ))
+  if( std::optional< GLuint > maybeFragShader = makeShader( fragShaderSource, GL_FRAGMENT_SHADER ))
     fragShader = *maybeFragShader;
   else
     return 1;
