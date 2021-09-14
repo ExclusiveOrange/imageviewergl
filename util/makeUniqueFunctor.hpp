@@ -4,7 +4,10 @@
 
 #include <memory>
 
-template< typename R, typename ... Vs, typename F>
+// R is return type
+// Vs is zero or more input types
+// F is deduced by the actual function type - do not set it
+template< typename R, typename ... Vs, typename F >
 std::unique_ptr< IFunctor< R, Vs... >>
 makeUniqueFunctor( F && f )
 {
@@ -13,7 +16,7 @@ makeUniqueFunctor( F && f )
     std::remove_reference_t< F > f;
   public:
     Ftor( F && f ) : f{ std::move( f ) } {}
-    virtual ~Ftor() = default;
+    virtual ~Ftor() override = default;
     virtual R operator()( Vs... vs ) override { return f( std::forward< Vs... >( vs... )); }
   };
 

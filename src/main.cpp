@@ -1,8 +1,9 @@
-#include "readFile.hpp"
 #include "Destroyer.hpp"
-#include "GlfwWindow.hpp"
 #include "GlRenderer_ImageRenderer.hpp"
+#include "GlfwWindow.hpp"
+#include "makeUniqueFunctor.hpp"
 #include "RawImage_StbImage.hpp"
+#include "readFile.hpp"
 
 #define GL_SILENCE_DEPRECATION // MacOS has deprecated OpenGL - it still works up to 4.1 for now
 #include <gl/glew.h>
@@ -102,41 +103,37 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
+  // The following with a promise, a future, a thread, and some confusing stuff:
+  //   We want to load the image from storage in a separate thread so that it doesn't
+  //   delay creation of the window and initialization of OpenGL.
+  //   We also want to allow creation of GlRenderer_ImageRenderer, but only after the
+  //   image has been loaded, and only if there were no errors.
+  //   We don't want to create the GlRenderer_ImageRenderer here because it will need
+  //   the OpenGL context to exist, and it doesn't exist yet, and we don't control it.
+  //   So instead we wait until our image is loaded, and then we provide a function
+  //   which can create a GlRenderer_ImageRenderer.
+  //   We give this function to the IGlWindow through a promise/future mechanism in which
+  //   we give the future to the IGlWindow through its constructor.
+  //   The IGlWindow can periodically check whether the future is ready, at which point it
+  //   can call our function which creates a GlRenderer_ImageRenderer.
+
   std::promise< makeGlRenderer_t > promiseMakeGlRenderer;
   std::future< makeGlRenderer_t > futureMakeGlRenderer = promiseMakeGlRenderer.get_future();
 
   std::thread preparingMakeGlRenderer{
-      [=, promise = std::move( promiseMakeGlRenderer )]() mutable
+      [imageFilename, promise = std::move( promiseMakeGlRenderer )]() mutable
       {
         try
         {
           std::unique_ptr< IRawImage > rawImage =
               makeRawImage_StbImage( imageFilename.c_str());
 
-        makeGlRenderer_t makeGlRenderer = std::make_unique< makeGlRenderer_fn_t >(
-            [rawImage = std::move( rawImage )] () mutable
-        { return makeGlRenderer_ImageRenderer( std::move( rawImage )); });
-
-        auto t = std::make_unique< int >( 5 );
-
-        makeGlRenderer_t x = std::make_unique< makeGlRenderer_fn_t >(
-            [t = std::move(t)] () mutable -> std::unique_ptr< IGlRenderer >
-                { return {}; })
-
-        auto makeGlRenderer_p = std::make_unique< makeGlRenderer_fn_t >(
-          new makeGlRenderer_fn_t( [rawImage = std::move( rawImage )] () mutable
-          { return makeGlRenderer_ImageRenderer( std::move( rawImage )); }));
-
-
-          makeGlRenderer_t makeGlRenderer = std::make_unique< std::function< std::unique_ptr< IGlRenderer >(void )>>(
-              new
-              [rawImage = std::move( rawImage )]() mutable
-              {
-                return makeGlRenderer_ImageRenderer( std::move( rawImage ));
-              }
-          );
-
-        promise.set_value( std::move( makeGlRenderer ));
+          promise.set_value(
+              makeUniqueFunctor< std::unique_ptr< IGlRenderer >>(
+                  [rawImage = std::move( rawImage )]() mutable
+                  {
+                    return makeGlRenderer_ImageRenderer( std::move( rawImage ));
+                  } ));
         }
         catch( const std::exception &e )
         {
@@ -190,16 +187,6 @@ int main( int argc, char *argv[] )
   glGenVertexArrays( 1, &emptyVertexArray );
   Destroyer _emptyVertexArray{ [emptyVertexArray] { glDeleteVertexArrays( 1, &emptyVertexArray ); }};
   glBindVertexArray( emptyVertexArray );
-
-  //------------------------------------------------------------------------------
-
-  imageLoadingThread.join();
-
-  if( !maybeImage )
-    return 1;
-
-  Image image = *maybeImage;
-  maybeImage.reset();
 
   //------------------------------------------------------------------------------
 
@@ -271,4 +258,5 @@ int main( int argc, char *argv[] )
   //------------------------------------------------------------------------------
 
   window->enterEventLoop();
+  preparingMakeGlRenderer.join();
 }

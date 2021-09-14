@@ -8,13 +8,8 @@
 #include <future>
 #include <memory>
 
-// Must be a unique_ptr instead of a function because a function must be copyable
-// to be assigned to a promise but a mutable function cannot be copied,
-// and there is a reasonable use case for a mutable function.
-//using makeGlRenderer_fn_t = std::function< std::unique_ptr< IGlRenderer >( void ) >;
-//using makeGlRenderer_t = std::unique_ptr< makeGlRenderer_fn_t >;
-
-using makeGlRenderer_t = std::unique_ptr< IFunctor< std::unique_ptr< IGlRenderer >, void >( void )>;
+// Work-around to limitations of mutable std::function which cannot be copied.
+using makeGlRenderer_t = std::unique_ptr< IFunctor< std::unique_ptr< IGlRenderer > >>;
 
 // Takes a future which should eventually return a unique_ptr to a make function (see above).
 // The make function should promptly return an instance of IGlRenderer;
