@@ -117,33 +117,36 @@ int main( int argc, char *argv[] )
   //   The IGlWindow can periodically check whether the future is ready, at which point it
   //   can call our function which creates a GlRenderer_ImageRenderer.
 
-  std::promise< makeGlRenderer_t > promiseMakeGlRenderer;
-  std::future< makeGlRenderer_t > futureMakeGlRenderer = promiseMakeGlRenderer.get_future();
+  std::thread preparingMakeGlRenderer;
+  std::unique_ptr< IGlWindow > window;
 
-  std::thread preparingMakeGlRenderer{
-      [imageFilename, promise = std::move( promiseMakeGlRenderer )]() mutable
-      {
-        try
+  {
+    std::promise< makeGlRenderer_t > promiseMakeGlRenderer;
+    std::future< makeGlRenderer_t > futureMakeGlRenderer = promiseMakeGlRenderer.get_future();
+
+    preparingMakeGlRenderer = std::thread{
+        [imageFilename, promise = std::move( promiseMakeGlRenderer )]() mutable
         {
-          std::unique_ptr< IRawImage > rawImage =
-              makeRawImage_StbImage( imageFilename.c_str());
+          try
+          {
+            std::unique_ptr< IRawImage > rawImage =
+                makeRawImage_StbImage( imageFilename.c_str());
 
-          promise.set_value(
-              makeUniqueFunctor< std::unique_ptr< IGlRenderer >>(
-                  [rawImage = std::move( rawImage )]() mutable
-                  {
-                    return makeGlRenderer_ImageRenderer( std::move( rawImage ));
-                  } ));
-        }
-        catch( const std::exception &e )
-        {
-          promise.set_exception( std::make_exception_ptr( e ));
-        }
-      }};
+            promise.set_value(
+                makeUniqueFunctor< std::unique_ptr< IGlRenderer >>(
+                    [rawImage = std::move( rawImage )]() mutable
+                    {
+                      return makeGlRenderer_ImageRenderer( std::move( rawImage ));
+                    } ));
+          }
+          catch( const std::exception &e )
+          {
+            promise.set_exception( std::make_exception_ptr( e ));
+          }
+        }};
 
-  //------------------------------------------------------------------------------
-
-  std::unique_ptr< IGlWindow > window = makeGlfwWindow( std::move( futureMakeGlRenderer ));
+    window = makeGlfwWindow( std::move( futureMakeGlRenderer ));
+  }
 
   //------------------------------------------------------------------------------
 
