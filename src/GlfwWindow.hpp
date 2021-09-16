@@ -8,7 +8,14 @@
 #include <future>
 #include <memory>
 
-// Work-around to limitations of mutable std::function which cannot be copied.
+// This works around the limitation that std::function cannot contain a non-copyable closure.
+// A mutable lambda which captures by moving a value, is a non-copyable closure.
+// There is a reasonable use case for a mutable lambda which captures by moving a value,
+// specifically for this application at least.
+// IFunctor is a custom container that can hold a non-copyable closure, or any other closure
+// or functor or function.
+// See: makeUniqueFunctor.hpp for the convenience function that takes a lambda and gives you
+// a unique_ptr< IFunctor >.
 using makeGlRenderer_t = std::unique_ptr< IFunctor< std::unique_ptr< IGlRenderer > >>;
 
 // Takes a future which should eventually return a unique_ptr to a make function (see above).

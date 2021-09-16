@@ -6,14 +6,17 @@
 
 namespace detail
 {
+namespace toString
+{
 extern thread_local std::ostringstream ss;
+}
 }
 
 template< class ... Ts >
 std::string
 toString( const Ts & ...vs )
 {
-  using namespace detail;
+  using namespace detail::toString;
   ss.str("");
   ss.clear();
   return ((ss << vs), ..., ss.str());

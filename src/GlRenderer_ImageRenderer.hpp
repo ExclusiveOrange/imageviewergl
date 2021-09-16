@@ -6,4 +6,5 @@
 #include <memory>
 
 std::unique_ptr< IGlRenderer >
-makeGlRenderer_ImageRenderer( std::unique_ptr< IRawImage > );
+makeGlRenderer_ImageRenderer( std::unique_ptr< IRawImage > )
+noexcept( false ); // may throw std::exception

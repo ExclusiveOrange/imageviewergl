@@ -1,5 +1,5 @@
-#include "RawImage_StbImage.hpp"
 #include "ErrorString.hpp"
+#include "RawImage_StbImage.hpp"
 
 #include <stb_image.h>
 
@@ -12,7 +12,7 @@ struct RawImage : public IRawImage
 
   RawImage( const char *filename )
   {
-    pixels = stbi_load( imageFilename.c_str(), &width, &height, &nChannels, 0 );
+    pixels = stbi_load( filename, &width, &height, &nChannels, 0 );
     if( !pixels )
       throw ErrorString( "failed to load image from file ", filename, "\n",
                          "because: ", stbi_failure_reason());
@@ -32,7 +32,7 @@ struct RawImage : public IRawImage
 } // namespace
 
 std::unique_ptr< IRawImage >
-makeRawImage_StbImage( const char *filename )
+loadRawImage_StbImage( const char *filename )
 {
   return std::make_unique< RawImage >( filename );
 }

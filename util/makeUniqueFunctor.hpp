@@ -17,7 +17,7 @@ makeUniqueFunctor( F && f )
   public:
     Ftor( F && f ) : f{ std::move( f ) } {}
     virtual ~Ftor() override = default;
-    virtual R operator()( Vs... vs ) override { return f( std::forward< Vs... >( vs... )); }
+    virtual R operator()( Vs && ... vs ) override { return f( std::forward< Vs >( vs )... ); }
   };
 
   return std::make_unique< Ftor >( std::move( f ));

@@ -78,7 +78,7 @@ struct GlfwWindow : public IGlWindow
     glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
     glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
     glfwWindowHint( GLFW_VISIBLE, GLFW_FALSE );
-    glfwWindowHint( GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE );
+//    glfwWindowHint( GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE );
     glfwWindowHint( GLFW_DECORATED, GLFW_TRUE );
 
     window = glfwCreateWindow( 640, 480, "", nullptr, nullptr );
@@ -198,14 +198,6 @@ struct GlfwWindow : public IGlWindow
   override { glfwHideWindow( window ); }
 
   virtual void
-  setRenderFunction( std::function< void( void ) > fnRender )
-  override
-  {
-    renderThreadShared.withLock(
-        [&]( RenderThreadShared &rts ) { rts.fnRender = std::move( fnRender ); } );
-  }
-
-  virtual void
   setContentAspectRatio( int numer, int denom )
   override { glfwSetWindowAspectRatio( window, numer, denom ); }
 
@@ -213,6 +205,13 @@ struct GlfwWindow : public IGlWindow
   setContentSize( int width, int height )
   override { glfwSetWindowSize( window, width, height ); }
 
+  virtual void
+  setRenderFunction( std::function< void( void ) > fnRender )
+  override
+  {
+    renderThreadShared.withLock(
+        [&]( RenderThreadShared &rts ) { rts.fnRender = std::move( fnRender ); } );
+  }
   virtual void
   setTitle( const char *title )
   override { glfwSetWindowTitle( window, title ); }
