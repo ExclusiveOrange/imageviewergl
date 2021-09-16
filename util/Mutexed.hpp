@@ -16,32 +16,31 @@ class Mutexed : NoCopy
 public:
   template< typename ... Args >
   Mutexed( Args &&... args )
-  : v{ std::forward< Args >( args )... }
-  {}
+      : v{ std::forward< Args >( args )... } {}
 
   template< typename F, typename ... Args >
-  void withLock( F && f, Args &&... args )
+  void withLock( F &&f, Args &&... args )
   {
     std::unique_lock lk( m );
-    f( v, std::forward< Args >( args )... );
+    std::forward< F >( f )( v, std::forward< Args >( args )... );
   }
 
   template< typename F, typename ... Args >
-  void withLockThenNotify( F && f, Args &&... args )
+  void withLockThenNotify( F &&f, Args &&... args )
   {
     std::unique_lock lk( m );
-    f( v, std::forward< Args >( args )... );
+    std::forward< F >( f )( v, std::forward< Args >( args )... );
     cv.notify_one();
   }
 
   template< typename Predicate, typename Then, typename ... ThenArgs >
   auto waitThen(
-      Predicate && predicate, // (const T &) -> bool
-      Then && then, // (T &, ThenArgs...) -> auto
+      Predicate &&predicate, // (const T &) -> bool
+      Then &&then, // (T &, ThenArgs...) -> auto
       ThenArgs &&... thenArgs )
   {
     std::unique_lock lk( m );
     cv.wait( lk, std::bind( std::forward< Predicate >( predicate ), std::cref( v )));
-    return then( v, std::forward< ThenArgs >( thenArgs )... );
+    return std::forward< Then >( then )( v, std::forward< ThenArgs >( thenArgs )... );
   }
 };
