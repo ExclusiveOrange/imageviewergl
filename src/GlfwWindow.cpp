@@ -42,6 +42,11 @@ struct GlfwWindow : public IGlWindow
   Mutexed< RenderThreadShared > renderThreadShared;
   std::thread renderThread;
 
+  std::future< makeGlRenderer_t > futureMakeGlRenderer;
+  std::function< void() > onRender;
+
+  std::unique_ptr< IGlRenderer > renderer;
+
   //------------------------------------------------------------------------------
 
   static void
@@ -109,18 +114,18 @@ struct GlfwWindow : public IGlWindow
     glfwMakeContextCurrent( nullptr );
 
     renderThread = std::thread{
-        [window = this->window, &renderThreadShared = this->renderThreadShared]
+        [this]
         {
           // activate the OpenGL context in this thread (the render thread);
           // however it is now unusable in the original thread
-          glfwMakeContextCurrent( window );
+          glfwMakeContextCurrent( this->window );
 
           auto waitPredicate =
-              []( RenderThreadShared &rts ) { return rts.state != RenderThreadState::shouldWait; };
+              []( const RenderThreadShared &rts ) { return rts.state != RenderThreadState::shouldWait; };
 
           bool shouldQuit{};
           auto whileLocked =
-              [&shouldQuit, window]( RenderThreadShared &rts )
+              [&shouldQuit, this]( RenderThreadShared &rts )
               {
                 if( rts.state == RenderThreadState::shouldQuit )
                 {
@@ -137,7 +142,7 @@ struct GlfwWindow : public IGlWindow
                 if( rts.fnRender )
                   rts.fnRender();
 
-                glfwSwapBuffers( window );
+                glfwSwapBuffers( this->window );
 
                 rts.state = RenderThreadState::shouldWait;
               };
@@ -156,15 +161,29 @@ struct GlfwWindow : public IGlWindow
       renderThread.join();
   }
 
+  void unpackFutureMakeGlRenderer()
+  {
+    if( std::future_status::ready != futureMakeGlRenderer.wait_for( std::chrono::milliseconds( 0 )))
+      return;
+
+    const makeGlRenderer_t makeGlRenderer = futureMakeGlRenderer.get();
+    futureMakeGlRenderer = {};
+
+    renderer = (*makeGlRenderer)();
+    onRender = [this] { this->renderer->render(); };
+  }
+
   //------------------------------------------------------------------------------
 
   GlfwWindow(
       std::future< makeGlRenderer_t > futureMakeGlRenderer )
+      : futureMakeGlRenderer{ std::move( futureMakeGlRenderer ) }
   {
     startGlfw();
     createGlfwWindow();
     startGlew( window );
     glfwSwapInterval( 0 );
+    onRender = [this] { this->unpackFutureMakeGlRenderer(); };
   }
 
   virtual ~GlfwWindow() override
@@ -212,6 +231,7 @@ struct GlfwWindow : public IGlWindow
     renderThreadShared.withLock(
         [&]( RenderThreadShared &rts ) { rts.fnRender = std::move( fnRender ); } );
   }
+
   virtual void
   setTitle( const char *title )
   override { glfwSetWindowTitle( window, title ); }
@@ -224,7 +244,7 @@ struct GlfwWindow : public IGlWindow
 
 std::unique_ptr< IGlWindow >
 makeGlfwWindow(
-   std::future< makeGlRenderer_t > futureMakeGlRenderer )
+    std::future< makeGlRenderer_t > futureMakeGlRenderer )
 {
   return std::make_unique< GlfwWindow >( std::move( futureMakeGlRenderer ));
 }

@@ -78,8 +78,7 @@ int main( int argc, char *argv[] )
   //   the OpenGL context to exist, and it doesn't exist yet, and we don't control it.
   //   So instead we wait until our image is loaded, and then we provide a function
   //   which can create a GlRenderer_ImageRenderer.
-  //   We give this function to the IGlWindow through a promise/future mechanism in which
-  //   we give the future to the IGlWindow through its constructor.
+  //   We give this function to the IGlWindow constructor through a std::future.
   //   The IGlWindow can periodically check whether the future is ready, at which point it
   //   can call our function which creates a GlRenderer_ImageRenderer.
 
@@ -99,7 +98,7 @@ int main( int argc, char *argv[] )
                 loadRawImage_StbImage( imageFilename.c_str());
 
             promise.set_value(
-                makeUniqueFunctor< std::unique_ptr< IGlRenderer >>(
+                makeUniqueFunctor(
                     [rawImage = std::move( rawImage )]() mutable
                     {
                       return makeGlRenderer_ImageRenderer( std::move( rawImage ));
@@ -107,7 +106,7 @@ int main( int argc, char *argv[] )
           }
           catch( ... )
           {
-            promise.set_exception( std::current_exception() );
+            promise.set_exception( std::current_exception());
           }
         }};
 

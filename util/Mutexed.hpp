@@ -26,11 +26,11 @@ public:
   }
 
   void waitThen(
-      const std::function< bool( T & ) > & predicate,
+      const std::function< bool( const T & ) > & predicate,
       const std::function< void( T & ) > & then )
   {
     std::unique_lock lk( m );
-    cv.wait( lk, [&,this]{ return predicate( v ); });
+    cv.wait( lk, [&,this]{ return predicate( this->v ); });
     then( v );
   }
 };
