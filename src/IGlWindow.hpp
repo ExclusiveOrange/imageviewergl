@@ -12,7 +12,6 @@ struct IGlWindow
   virtual void hide() = 0;
   virtual void setContentAspectRatio( int numer, int denom ) = 0;
   virtual void setContentSize( int width, int height ) = 0;
-  virtual void setRenderFunction( std::function< void( void ) > ) = 0;
   virtual void setTitle( const char * ) = 0;
   virtual void show() = 0;
 };

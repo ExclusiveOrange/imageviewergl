@@ -37,15 +37,11 @@ struct GlfwWindow : public IGlWindow
   {
     RenderThreadState state = RenderThreadState::shouldRender;
     std::optional< FrameSize > frameSizeUpdate;
-    std::function< void( void ) > fnRender;
+
+    std::function< void( RenderThreadShared & ) > onRender;
   };
   Mutexed< RenderThreadShared > renderThreadShared;
   std::thread renderThread;
-
-  std::future< makeGlRenderer_t > futureMakeGlRenderer;
-  std::function< void() > onRender;
-
-  std::unique_ptr< IGlRenderer > renderer;
 
   //------------------------------------------------------------------------------
 
@@ -139,8 +135,8 @@ struct GlfwWindow : public IGlWindow
                   glViewport( 0, 0, width, height );
                 }
 
-                if( rts.fnRender )
-                  rts.fnRender();
+                if( rts.onRender )
+                  rts.onRender( rts );
 
                 glfwSwapBuffers( this->window );
 
@@ -161,29 +157,35 @@ struct GlfwWindow : public IGlWindow
       renderThread.join();
   }
 
-  void unpackFutureMakeGlRenderer()
+  void unpackFutureMakeGlRenderer( RenderThreadShared & rts )
   {
-    if( std::future_status::ready != futureMakeGlRenderer.wait_for( std::chrono::milliseconds( 0 )))
+    if( std::future_status::ready != rts.futureMakeGlRenderer.wait_for( std::chrono::milliseconds( 0 )))
       return;
 
-    const makeGlRenderer_t makeGlRenderer = futureMakeGlRenderer.get();
-    futureMakeGlRenderer = {};
+    const makeGlRenderer_t makeGlRenderer = rts.futureMakeGlRenderer.get();
+    rts.futureMakeGlRenderer = {};
 
-    renderer = (*makeGlRenderer)();
-    onRender = [this] { this->renderer->render(); };
+    rts.renderer = (*makeGlRenderer)();
+    rts.onRender = [] { rts.renderer->render(); };
   }
 
   //------------------------------------------------------------------------------
 
   GlfwWindow(
       std::future< makeGlRenderer_t > futureMakeGlRenderer )
-      : futureMakeGlRenderer{ std::move( futureMakeGlRenderer ) }
   {
     startGlfw();
     createGlfwWindow();
     startGlew( window );
     glfwSwapInterval( 0 );
-    onRender = [this] { this->unpackFutureMakeGlRenderer(); };
+
+    renderThreadShared.withLock(
+        []( RenderThreadShared & rts )
+        {
+          rts.onRender =
+
+        } );
+    onRender = [this]( { this->unpackFutureMakeGlRenderer(); };
   }
 
   virtual ~GlfwWindow() override

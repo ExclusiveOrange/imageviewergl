@@ -97,12 +97,14 @@ int main( int argc, char *argv[] )
             std::unique_ptr< IRawImage > rawImage =
                 loadRawImage_StbImage( imageFilename.c_str());
 
-            promise.set_value(
+            makeGlRenderer_t makeGlRenderer =
                 makeUniqueFunctor(
                     [rawImage = std::move( rawImage )]() mutable
                     {
                       return makeGlRenderer_ImageRenderer( std::move( rawImage ));
-                    } ));
+                    } );
+
+            promise.set_value( std::move( makeGlRenderer ));
           }
           catch( ... )
           {
