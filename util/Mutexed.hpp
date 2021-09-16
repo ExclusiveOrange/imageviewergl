@@ -29,12 +29,12 @@ public:
 
   template< typename Predicate, typename Then, typename ... ThenArgs >
   auto waitThen(
-      Predicate && predicate,
-      Then && then,
+      Predicate && predicate, // (const T &) -> bool
+      Then && then, // (T &, ThenArgs...) -> auto
       ThenArgs &&... thenArgs )
   {
     std::unique_lock lk( m );
-    cv.wait( lk, std::bind( predicate, std::cref( v )));
+    cv.wait( lk, std::bind( std::forward< Predicate >( predicate ), std::cref( v )));
     return then( v, std::forward< ThenArgs >( thenArgs )... );
   }
 };

@@ -2,6 +2,7 @@
 
 #include "Destroyer.hpp"
 #include "ErrorString.hpp"
+#include "makeUniqueFunctor.hpp"
 #include "Mutexed.hpp"
 
 #define GL_SILENCE_DEPRECATION // MacOS has deprecated OpenGL - it still works up to 4.1 for now
@@ -38,7 +39,7 @@ struct GlfwWindow : public IGlWindow
     RenderThreadState state = RenderThreadState::shouldRender;
     std::optional< FrameSize > frameSizeUpdate;
 
-    std::function< void( RenderThreadShared & ) > onRender;
+    std::unique_ptr< IFunctor< void, RenderThreadShared & >> onRender;
   };
   Mutexed< RenderThreadShared > renderThreadShared;
   std::thread renderThread;
@@ -136,7 +137,7 @@ struct GlfwWindow : public IGlWindow
                 }
 
                 if( rts.onRender )
-                  rts.onRender( rts );
+                  (*rts.onRender)( rts );
 
                 glfwSwapBuffers( this->window );
 
@@ -157,18 +158,6 @@ struct GlfwWindow : public IGlWindow
       renderThread.join();
   }
 
-  void unpackFutureMakeGlRenderer( RenderThreadShared & rts )
-  {
-    if( std::future_status::ready != rts.futureMakeGlRenderer.wait_for( std::chrono::milliseconds( 0 )))
-      return;
-
-    const makeGlRenderer_t makeGlRenderer = rts.futureMakeGlRenderer.get();
-    rts.futureMakeGlRenderer = {};
-
-    rts.renderer = (*makeGlRenderer)();
-    rts.onRender = [] { rts.renderer->render(); };
-  }
-
   //------------------------------------------------------------------------------
 
   GlfwWindow(
@@ -180,12 +169,20 @@ struct GlfwWindow : public IGlWindow
     glfwSwapInterval( 0 );
 
     renderThreadShared.withLock(
-        []( RenderThreadShared & rts )
+        [futureMakeGlRenderer = std::move( futureMakeGlRenderer )]( RenderThreadShared &rts ) mutable
         {
-          rts.onRender =
+          rts.onRender = makeUniqueFunctor< RenderThreadShared& >(
+              [futureMakeGlRenderer = std::move( futureMakeGlRenderer )]( RenderThreadShared &rts ) mutable
+              {
+                if( std::future_status::ready != futureMakeGlRenderer.wait_for( std::chrono::milliseconds( 0 )))
+                  return;
 
-        } );
-    onRender = [this]( { this->unpackFutureMakeGlRenderer(); };
+                const makeGlRenderer_t makeGlRenderer = futureMakeGlRenderer.get();
+
+                rts.onRender = makeUniqueFunctor< RenderThreadShared& >(
+                    [renderer = (*makeGlRenderer)()]( RenderThreadShared &rts ) mutable { renderer->render(); });
+              });
+        });
   }
 
   virtual ~GlfwWindow() override
@@ -225,14 +222,6 @@ struct GlfwWindow : public IGlWindow
   virtual void
   setContentSize( int width, int height )
   override { glfwSetWindowSize( window, width, height ); }
-
-  virtual void
-  setRenderFunction( std::function< void( void ) > fnRender )
-  override
-  {
-    renderThreadShared.withLock(
-        [&]( RenderThreadShared &rts ) { rts.fnRender = std::move( fnRender ); } );
-  }
 
   virtual void
   setTitle( const char *title )

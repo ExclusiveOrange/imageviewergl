@@ -98,8 +98,6 @@ struct GlRenderer : public IGlRenderer
     makeTextureFromImage( std::move( rawImage ));
     makeShaderProgram();
     makeEmptyVertexArray();
-
-    int debugging = 0;
   }
 
   virtual ~GlRenderer() override = default;
