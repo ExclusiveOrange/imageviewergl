@@ -1,17 +1,24 @@
 #pragma once
 
+#include "NoCopy.hpp"
+
 #include <condition_variable>
 #include <functional>
 #include <mutex>
 
 template< class T >
-class Mutexed
+class Mutexed : NoCopy
 {
   T v;
   std::mutex m;
   std::condition_variable cv;
 
 public:
+  template< typename ... Args >
+  Mutexed( Args &&... args )
+  : v{ std::forward< Args >( args )... }
+  {}
+
   template< typename F, typename ... Args >
   void withLock( F && f, Args &&... args )
   {
