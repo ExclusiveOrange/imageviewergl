@@ -171,7 +171,7 @@ struct GlfwWindow : public IGlWindow
     renderThreadShared.withLock(
         [futureMakeGlRenderer = std::move( futureMakeGlRenderer )]( RenderThreadShared &rts ) mutable
         {
-          rts.onRender = makeUniqueFunctor< RenderThreadShared& >(
+          rts.onRender = makeUniqueFunctor(
               [futureMakeGlRenderer = std::move( futureMakeGlRenderer )]( RenderThreadShared &rts ) mutable
               {
                 if( std::future_status::ready != futureMakeGlRenderer.wait_for( std::chrono::milliseconds( 0 )))
@@ -179,7 +179,7 @@ struct GlfwWindow : public IGlWindow
 
                 const makeGlRenderer_t makeGlRenderer = futureMakeGlRenderer.get();
 
-                rts.onRender = makeUniqueFunctor< RenderThreadShared& >(
+                rts.onRender = makeUniqueFunctor(
                     [renderer = (*makeGlRenderer)()]( RenderThreadShared &rts ) mutable { renderer->render(); });
               });
         });
