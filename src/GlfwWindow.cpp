@@ -2,7 +2,6 @@
 
 #include "Destroyer.hpp"
 #include "ErrorString.hpp"
-#include "makeUniqueFunctor.hpp"
 #include "Mutexed.hpp"
 
 #define GL_SILENCE_DEPRECATION // MacOS has deprecated OpenGL - it still works up to 4.1 for now
@@ -21,7 +20,7 @@ void throwGlfwErrorAsString( int error, const char *description )
 
 //==============================================================================
 
-struct GlfwWindow : public IGlWindow
+struct GlfwWindow : public IGlWindow, public IGlWindowAppearance
 {
   struct
   {
@@ -39,7 +38,7 @@ struct GlfwWindow : public IGlWindow
     RenderThreadState state = RenderThreadState::shouldRender;
     std::optional< FrameSize > frameSizeUpdate;
 
-    std::future< makeGlRenderer_t > futureMakeGlRenderer;
+    std::future< std::unique_ptr< IGlRendererMaker >> futureGlRendererMaker;
     std::unique_ptr< IGlRenderer > renderer;
   };
   Mutexed< RenderThreadShared > renderThreadShared;
@@ -132,11 +131,11 @@ struct GlfwWindow : public IGlWindow
                 }
 
                 if( !rts.renderer )
-                  if( std::future_status::ready == rts.futureMakeGlRenderer.wait_for( std::chrono::milliseconds( 0 )))
+                  if( std::future_status::ready == rts.futureGlRendererMaker.wait_for( std::chrono::milliseconds( 0 )))
                   {
-                    const makeGlRenderer_t makeGlRenderer = rts.futureMakeGlRenderer.get();
-                    rts.futureMakeGlRenderer = {};
-                    rts.renderer = (*makeGlRenderer)();
+                    const std::unique_ptr< IGlRendererMaker > rendererMaker = rts.futureGlRendererMaker.get();
+                    rts.futureGlRendererMaker = {};
+                    rts.renderer = rendererMaker->makeGlRenderer( *this );
                   }
 
                 if( rts.frameSizeUpdate )
@@ -170,7 +169,7 @@ struct GlfwWindow : public IGlWindow
   //------------------------------------------------------------------------------
 
   GlfwWindow(
-      std::future< makeGlRenderer_t > futureMakeGlRenderer )
+      std::future< std::unique_ptr< IGlRendererMaker >> futureGlRendererMaker )
   {
     startGlfw();
     createGlfwWindow();
@@ -178,9 +177,9 @@ struct GlfwWindow : public IGlWindow
     glfwSwapInterval( 0 );
 
     renderThreadShared.withLock(
-        [futureMakeGlRenderer = std::move( futureMakeGlRenderer )]( RenderThreadShared &rts ) mutable
+        [&]( RenderThreadShared &rts )
         {
-          rts.futureMakeGlRenderer = std::move( futureMakeGlRenderer );
+          rts.futureGlRendererMaker = std::move( futureGlRendererMaker );
         });
   }
 
@@ -234,7 +233,7 @@ struct GlfwWindow : public IGlWindow
 
 std::unique_ptr< IGlWindow >
 makeGlfwWindow(
-    std::future< makeGlRenderer_t > futureMakeGlRenderer )
+    std::future< std::unique_ptr< IGlRendererMaker >> futureGlRendererMaker )
 {
-  return std::make_unique< GlfwWindow >( std::move( futureMakeGlRenderer ));
+  return std::make_unique< GlfwWindow >( std::move( futureGlRendererMaker ));
 }

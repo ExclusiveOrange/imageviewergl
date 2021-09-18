@@ -92,9 +92,14 @@ struct GlRenderer : public IGlRenderer
     _texture = Destroyer{ [this] { glDeleteTextures( 1, &this->texture ); }};
   }
 
-  GlRenderer( std::unique_ptr< IRawImage > rawImage )
+  GlRenderer(
+      IGlWindowAppearance &windowAppearance,
+      std::unique_ptr< IRawImage > rawImage )
   noexcept( false )
   {
+    // TODO: set window appearance:
+    //    title
+    //    size
     makeTextureFromImage( std::move( rawImage ));
     makeShaderProgram();
     makeEmptyVertexArray();
@@ -113,7 +118,9 @@ struct GlRenderer : public IGlRenderer
 } // namespace
 
 std::unique_ptr< IGlRenderer >
-makeGlRenderer_ImageRenderer( std::unique_ptr< IRawImage > rawImage )
+makeGlRenderer_ImageRenderer(
+    IGlWindowAppearance &windowAppearance,
+    std::unique_ptr< IRawImage > rawImage )
 {
-  return std::make_unique< GlRenderer >( std::move( rawImage ));
+  return std::make_unique< GlRenderer >( windowAppearance, std::move( rawImage ));
 }

@@ -1,7 +1,7 @@
 #include "Destroyer.hpp"
 #include "GlRenderer_ImageRenderer.hpp"
 #include "GlfwWindow.hpp"
-#include "makeUniqueFunctor.hpp"
+#include "IGlRendererMaker.hpp"
 #include "RawImage_StbImage.hpp"
 
 #include <filesystem>
@@ -86,8 +86,8 @@ int main( int argc, char *argv[] )
   std::unique_ptr< IGlWindow > window;
 
   {
-    std::promise< makeGlRenderer_t > promiseMakeGlRenderer;
-    std::future< makeGlRenderer_t > futureMakeGlRenderer = promiseMakeGlRenderer.get_future();
+    std::promise< std::unique_ptr< IGlRendererMaker > > promiseMakeGlRenderer;
+    std::future< std::unique_ptr< IGlRendererMaker > > futureMakeGlRenderer = promiseMakeGlRenderer.get_future();
 
     preparingMakeGlRenderer = std::thread{
         [imageFilename, promise = std::move( promiseMakeGlRenderer )]() mutable
@@ -97,14 +97,22 @@ int main( int argc, char *argv[] )
             std::unique_ptr< IRawImage > rawImage =
                 loadRawImage_StbImage( imageFilename.c_str());
 
-            makeGlRenderer_t makeGlRenderer =
-                makeUniqueFunctor(
-                    [rawImage = std::move( rawImage )]() mutable
-                    {
-                      return makeGlRenderer_ImageRenderer( std::move( rawImage ));
-                    } );
+            struct GlRendererMaker : public IGlRendererMaker
+            {
+              std::unique_ptr< IRawImage > rawImage;
 
-            promise.set_value( std::move( makeGlRenderer ));
+              GlRendererMaker( std::unique_ptr< IRawImage > rawImage )
+                  : rawImage{ std::move( rawImage ) } {}
+
+              virtual
+              std::unique_ptr< IGlRenderer >
+              makeGlRenderer( IGlWindowAppearance &windowAppearance ) override
+              {
+                return makeGlRenderer_ImageRenderer( windowAppearance, std::move( rawImage ));
+              }
+            };
+
+            promise.set_value( std::make_unique< GlRendererMaker >( std::move( rawImage )));
           }
           catch( ... )
           {
@@ -117,7 +125,7 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  window->setTitle( imageFilename.c_str());
+//  window->setTitle( imageFilename.c_str());
 
   //------------------------------------------------------------------------------
 
