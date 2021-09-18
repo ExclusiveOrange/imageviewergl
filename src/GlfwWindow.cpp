@@ -39,7 +39,8 @@ struct GlfwWindow : public IGlWindow
     RenderThreadState state = RenderThreadState::shouldRender;
     std::optional< FrameSize > frameSizeUpdate;
 
-    std::unique_ptr< IFunctor< void, RenderThreadShared & >> onRender;
+    std::future< makeGlRenderer_t > futureMakeGlRenderer;
+    std::unique_ptr< IGlRenderer > renderer;
   };
   Mutexed< RenderThreadShared > renderThreadShared;
   std::thread renderThread;
@@ -130,14 +131,22 @@ struct GlfwWindow : public IGlWindow
                   return;
                 }
 
+                if( !rts.renderer )
+                  if( std::future_status::ready == rts.futureMakeGlRenderer.wait_for( std::chrono::milliseconds( 0 )))
+                  {
+                    const makeGlRenderer_t makeGlRenderer = rts.futureMakeGlRenderer.get();
+                    rts.futureMakeGlRenderer = {};
+                    rts.renderer = (*makeGlRenderer)();
+                  }
+
                 if( rts.frameSizeUpdate )
                 {
                   auto[width, height] = *std::exchange( rts.frameSizeUpdate, std::nullopt );
                   glViewport( 0, 0, width, height );
                 }
 
-                if( rts.onRender )
-                  (*rts.onRender)( rts );
+                if( rts.renderer )
+                  rts.renderer->render();
 
                 glfwSwapBuffers( this->window );
 
@@ -171,17 +180,7 @@ struct GlfwWindow : public IGlWindow
     renderThreadShared.withLock(
         [futureMakeGlRenderer = std::move( futureMakeGlRenderer )]( RenderThreadShared &rts ) mutable
         {
-          rts.onRender = makeUniqueFunctor(
-              [futureMakeGlRenderer = std::move( futureMakeGlRenderer )]( RenderThreadShared &rts ) mutable
-              {
-                if( std::future_status::ready != futureMakeGlRenderer.wait_for( std::chrono::milliseconds( 0 )))
-                  return;
-
-                const makeGlRenderer_t makeGlRenderer = futureMakeGlRenderer.get();
-
-                rts.onRender = makeUniqueFunctor(
-                    [renderer = (*makeGlRenderer)()]( RenderThreadShared &rts ) mutable { renderer->render(); });
-              });
+          rts.futureMakeGlRenderer = std::move( futureMakeGlRenderer );
         });
   }
 
