@@ -33,6 +33,12 @@ public:
     cv.notify_one();
   }
 
+  template< typename F, typename ... Args >
+  void withoutLock( F &&f, Args &&... args )
+  {
+    std::forward< F >( f )( v, std::forward< Args >( args )... );
+  }
+
   template< typename Predicate, typename Then, typename ... ThenArgs >
   auto waitThen(
       Predicate &&predicate, // (const T &) -> bool

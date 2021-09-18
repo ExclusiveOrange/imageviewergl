@@ -8,227 +8,274 @@
 #include <gl/glew.h>
 #include <GLFW/glfw3.h>
 
+#include <functional>
 #include <optional>
 #include <thread>
+#include <vector>
 
 namespace
 {
-void throwGlfwErrorAsString( int error, const char *description )
-{
-  throw ErrorString( "GLFW error ", error, ": ", description );
-}
+  void throwGlfwErrorAsString( int error, const char *description )
+  {
+    throw ErrorString( "GLFW error ", error, ": ", description );
+  }
 
 //==============================================================================
 
-struct GlfwWindow : public IGlWindow, public IGlWindowAppearance
-{
-  struct
+  struct GlfwWindow : public IGlWindow, public IGlWindowAppearance
   {
-    Destroyer
-        glfwInit,
-        glfwCreateWindow;
-  } destroyers;
+    struct
+    {
+      Destroyer
+          glfwInit,
+          glfwCreateWindow;
+    } destroyers;
 
-  GLFWwindow *window{};
+    GLFWwindow *window{};
 
-  enum class RenderThreadState { shouldWait, shouldRender, shouldQuit };
-  struct FrameSize { int width, height; };
-  struct RenderThreadShared
-  {
-    RenderThreadState state = RenderThreadState::shouldRender;
-    std::optional< FrameSize > frameSizeUpdate;
+    enum class RenderThreadState { shouldWait, shouldRender, shouldQuit };
+    struct FrameSize { int width, height; };
+    struct RenderThreadShared
+    {
+      RenderThreadState state = RenderThreadState::shouldRender;
+      std::optional< FrameSize > frameSizeUpdate;
 
-    std::future< std::unique_ptr< IGlRendererMaker >> futureGlRendererMaker;
-    std::unique_ptr< IGlRenderer > renderer;
-  };
-  Mutexed< RenderThreadShared > renderThreadShared;
-  std::thread renderThread;
+      std::future< std::unique_ptr< IGlRendererMaker >> futureGlRendererMaker;
+      std::unique_ptr< IGlRenderer > renderer;
 
-  //------------------------------------------------------------------------------
+      std::vector< std::function< void() >> runInMainThread;
+    };
+    Mutexed< RenderThreadShared > renderThreadShared;
+    std::thread renderThread;
 
-  static void
-  _glfwFramebufferSizeCallback( GLFWwindow *window, int width, int height )
-  {
-    auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
-    gw->renderThreadShared.withLock(
-        [=]( RenderThreadShared &rts ) { rts.frameSizeUpdate = { width, height }; } );
-  }
+    //------------------------------------------------------------------------------
 
-  static void
-  _glfwWindowRefreshCallback( GLFWwindow *window )
-  {
-    auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
-    gw->renderThreadShared.withLockThenNotify(
-        [=]( RenderThreadShared &rts ) { rts.state = RenderThreadState::shouldRender; } );
-  }
+    static void
+    _glfwFramebufferSizeCallback( GLFWwindow *window, int width, int height )
+    {
+      auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
+      gw->renderThreadShared.withLock(
+          [=]( RenderThreadShared &rts ) { rts.frameSizeUpdate = { width, height }; } );
+    }
 
-  static void
-  startGlew( GLFWwindow *window )
-  {
-    glfwMakeContextCurrent( window );
+    static void
+    _glfwWindowRefreshCallback( GLFWwindow *window )
+    {
+      auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
+      gw->renderThreadShared.withLockThenNotify(
+          [=]( RenderThreadShared &rts ) { rts.state = RenderThreadState::shouldRender; } );
+    }
 
-    if( GLEW_OK != glewInit())
-      throw ErrorString( "glewInit() failed" );
-  }
+    static void
+    startGlew( GLFWwindow *window )
+    {
+      glfwMakeContextCurrent( window );
 
-  //------------------------------------------------------------------------------
+      if( GLEW_OK != glewInit())
+        throw ErrorString( "glewInit() failed" );
+    }
 
-  void createGlfwWindow()
-  {
-    glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
-    glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE );
-    glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
-    glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
-    glfwWindowHint( GLFW_VISIBLE, GLFW_FALSE );
+    //------------------------------------------------------------------------------
+
+    void createGlfwWindow()
+    {
+      glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
+      glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE );
+      glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
+      glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
+      glfwWindowHint( GLFW_VISIBLE, GLFW_FALSE );
 //    glfwWindowHint( GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE );
-    glfwWindowHint( GLFW_DECORATED, GLFW_TRUE );
+      glfwWindowHint( GLFW_DECORATED, GLFW_TRUE );
 
-    window = glfwCreateWindow( 640, 480, "", nullptr, nullptr );
-    if( !window )
-      throw ErrorString( "glfwCreateWindow(..) failed" );
+      window = glfwCreateWindow( 640, 480, "", nullptr, nullptr );
+      if( !window )
+        throw ErrorString( "glfwCreateWindow(..) failed" );
 
-    destroyers.glfwCreateWindow = { [window = this->window] { glfwDestroyWindow( window ); }};
+      destroyers.glfwCreateWindow = { [window = this->window] { glfwDestroyWindow( window ); }};
 
-    glfwSetWindowUserPointer( window, this );
-    glfwSetFramebufferSizeCallback( window, _glfwFramebufferSizeCallback );
-    glfwSetWindowRefreshCallback( window, _glfwWindowRefreshCallback );
-  }
+      glfwSetWindowUserPointer( window, this );
+      glfwSetFramebufferSizeCallback( window, _glfwFramebufferSizeCallback );
+      glfwSetWindowRefreshCallback( window, _glfwWindowRefreshCallback );
+    }
 
-  void startGlfw()
-  {
-    if( !glfwInit())
-      throw ErrorString( "glfwInit() failed" );
+    void enqueueForMainThread( std::function< void() > f )
+    {
+      renderThreadShared.withoutLock(
+          [f = std::move( f )]( RenderThreadShared &rts )
+          {
+            rts.runInMainThread.emplace_back( std::move( f ));
+          } );
+    }
 
-    destroyers.glfwInit = { glfwTerminate };
+    void startGlfw()
+    {
+      if( !glfwInit())
+        throw ErrorString( "glfwInit() failed" );
 
-    glfwSetErrorCallback( throwGlfwErrorAsString );
-  }
+      destroyers.glfwInit = { glfwTerminate };
 
-  void startRenderThread()
-  {
-    // deactivate the OpenGL context in the current thread
-    // before making it active in the render thread, below
-    glfwMakeContextCurrent( nullptr );
+      glfwSetErrorCallback( throwGlfwErrorAsString );
+    }
 
-    renderThread = std::thread{
-        [this]
-        {
-          // activate the OpenGL context in this thread (the render thread);
-          // however it is now unusable in the original thread
-          glfwMakeContextCurrent( this->window );
+    void startRenderThread()
+    {
+      // deactivate the OpenGL context in the current thread
+      // before making it active in the render thread, below
+      glfwMakeContextCurrent( nullptr );
 
-          auto waitPredicate =
-              []( const RenderThreadShared &rts ) { return rts.state != RenderThreadState::shouldWait; };
+      renderThread = std::thread{
+          [this]
+          {
+            // activate the OpenGL context in this thread (the render thread);
+            // however it is now unusable in the original thread
+            glfwMakeContextCurrent( this->window );
 
-          bool shouldQuit{};
-          auto whileLocked =
-              [&shouldQuit, this]( RenderThreadShared &rts )
-              {
-                if( rts.state == RenderThreadState::shouldQuit )
+            auto waitPredicate =
+                []( const RenderThreadShared &rts ) { return rts.state != RenderThreadState::shouldWait; };
+
+            bool shouldQuit{};
+            auto whileLocked =
+                [&shouldQuit, this]( RenderThreadShared &rts )
                 {
-                  shouldQuit = true;
-                  return;
-                }
-
-                if( !rts.renderer )
-                  if( std::future_status::ready == rts.futureGlRendererMaker.wait_for( std::chrono::milliseconds( 0 )))
+                  if( rts.state == RenderThreadState::shouldQuit )
                   {
-                    const std::unique_ptr< IGlRendererMaker > rendererMaker = rts.futureGlRendererMaker.get();
-                    rts.futureGlRendererMaker = {};
-                    rts.renderer = rendererMaker->makeGlRenderer( *this );
+                    shouldQuit = true;
+                    return;
                   }
 
-                if( rts.frameSizeUpdate )
-                {
-                  auto[width, height] = *std::exchange( rts.frameSizeUpdate, std::nullopt );
-                  glViewport( 0, 0, width, height );
-                }
+                  if( !rts.renderer )
+                    if( std::future_status::ready
+                        == rts.futureGlRendererMaker.wait_for( std::chrono::milliseconds( 0 )))
+                    {
+                      const std::unique_ptr< IGlRendererMaker > rendererMaker = rts.futureGlRendererMaker.get();
+                      rts.futureGlRendererMaker = {};
+                      rts.renderer = rendererMaker->makeGlRenderer( *this );
+                    }
 
-                if( rts.renderer )
-                  rts.renderer->render();
+                  if( rts.frameSizeUpdate )
+                  {
+                    auto[width, height] = *std::exchange( rts.frameSizeUpdate, std::nullopt );
+                    glViewport( 0, 0, width, height );
+                  }
 
-                glfwSwapBuffers( this->window );
+                  if( rts.renderer )
+                    rts.renderer->render();
 
-                rts.state = RenderThreadState::shouldWait;
-              };
+                  glfwSwapBuffers( this->window );
 
-          while( !shouldQuit )
-            renderThreadShared.waitThen( waitPredicate, whileLocked );
-        }};
-  }
+                  rts.state = RenderThreadState::shouldWait;
+                };
 
-  void stopRenderThread()
-  {
-    renderThreadShared.withLockThenNotify(
-        []( RenderThreadShared &rts ) { rts.state = RenderThreadState::shouldQuit; } );
+            while( !shouldQuit )
+              renderThreadShared.waitThen( waitPredicate, whileLocked );
+          }};
+    }
 
-    if( renderThread.joinable())
-      renderThread.join();
-  }
+    void stopRenderThread()
+    {
+      renderThreadShared.withLockThenNotify(
+          []( RenderThreadShared &rts ) { rts.state = RenderThreadState::shouldQuit; } );
 
-  //------------------------------------------------------------------------------
+      if( renderThread.joinable())
+        renderThread.join();
+    }
 
-  GlfwWindow(
-      std::future< std::unique_ptr< IGlRendererMaker >> futureGlRendererMaker )
-  {
-    startGlfw();
-    createGlfwWindow();
-    startGlew( window );
-    glfwSwapInterval( 0 );
+    //------------------------------------------------------------------------------
 
-    renderThreadShared.withLock(
-        [&]( RenderThreadShared &rts )
-        {
-          rts.futureGlRendererMaker = std::move( futureGlRendererMaker );
-        });
-  }
+    GlfwWindow(
+        std::future< std::unique_ptr< IGlRendererMaker >> futureGlRendererMaker )
+    {
+      startGlfw();
+      createGlfwWindow();
+      startGlew( window );
+      glfwSwapInterval( 0 );
 
-  virtual ~GlfwWindow() override
-  {
-    stopRenderThread();
-  }
+      renderThreadShared.withLock(
+          [&]( RenderThreadShared &rts )
+          {
+            rts.futureGlRendererMaker = std::move( futureGlRendererMaker );
+          } );
+    }
 
-  //------------------------------------------------------------------------------
+    virtual ~GlfwWindow() override
+    {
+      stopRenderThread();
+    }
 
-  virtual void
-  enterEventLoop()
-  override
-  {
-    startRenderThread();
+    //------------------------------------------------------------------------------
+    // IGlWindow overrides
 
-    while( !glfwWindowShouldClose( window ))
-      glfwWaitEvents();
-  }
+    virtual void
+    enterEventLoop()
+    override
+    {
+      startRenderThread();
 
-  virtual XYf
-  getContentScale()
-  override
-  {
-    XYf xyf;
-    glfwGetWindowContentScale( window, &xyf.x, &xyf.y );
-    return xyf;
-  }
+      while( !glfwWindowShouldClose( window ))
+      {
+        glfwWaitEvents();
 
-  virtual void
-  hide()
-  override { glfwHideWindow( window ); }
+        std::vector< std::function< void() >> runInMainThread;
+        renderThreadShared.withLock(
+            [&runInMainThread]( RenderThreadShared &rts )
+            {
+              if( !rts.runInMainThread.empty())
+                runInMainThread.swap( rts.runInMainThread );
+            } );
 
-  virtual void
-  setContentAspectRatio( int numer, int denom )
-  override { glfwSetWindowAspectRatio( window, numer, denom ); }
+        for( auto &fn : runInMainThread )
+          fn();
+      }
+    }
 
-  virtual void
-  setContentSize( int width, int height )
-  override { glfwSetWindowSize( window, width, height ); }
+    virtual void
+    hide()
+    override { glfwHideWindow( window ); }
 
-  virtual void
-  setTitle( const char *title )
-  override { glfwSetWindowTitle( window, title ); }
+    virtual void
+    show()
+    override { glfwShowWindow( window ); }
 
-  virtual void
-  show()
-  override { glfwShowWindow( window ); }
-};
+    //------------------------------------------------------------------------------
+    // IGlWindowAppearance overrides
+
+    virtual XYf
+    getContentScale()
+    override
+    {
+      XYf xyf;
+      glfwGetWindowContentScale( window, &xyf.x, &xyf.y );
+      return xyf;
+    }
+
+    virtual void
+    setContentAspectRatio( int numer, int denom )
+    override
+    {
+      enqueueForMainThread( std::bind( glfwSetWindowAspectRatio, window, numer, denom ));
+      glfwPostEmptyEvent();
+    }
+
+    virtual void
+    setContentSize( int width, int height )
+    override
+    {
+      enqueueForMainThread( std::bind( glfwSetWindowSize, window, width, height ));
+      glfwPostEmptyEvent();
+    }
+
+    virtual void
+    setTitle( std::string title )
+    override
+    {
+      enqueueForMainThread(
+          [=, title = std::move( title )]
+          {
+            glfwSetWindowTitle( window, title.c_str());
+          } );
+      glfwPostEmptyEvent();
+    }
+  };
 }
 
 std::unique_ptr< IGlWindow >
