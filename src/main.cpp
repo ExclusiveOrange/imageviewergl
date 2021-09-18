@@ -129,21 +129,6 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  // TODO: move window rescaling based on image size
-  //   somehow into GlRenderer_ImageRenderer
-//
-//  {
-//    auto[xscale, yscale] = window->getContentScale();
-//    const int scaledWidth = int( xscale * float( image.width ));
-//    const int scaledHeight = int( yscale * float( image.height ));
-//    window->setContentSize( scaledWidth, scaledHeight );
-//  }
-//  window->setContentAspectRatio( image.width, image.height );
-  // TODO: recreate centering mechanism using IGlWindow methods
-  //centerGlfwWindow( window, glfwGetPrimaryMonitor());
-
-  //------------------------------------------------------------------------------
-
   window->show();
 
   //------------------------------------------------------------------------------
