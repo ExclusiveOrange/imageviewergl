@@ -11,5 +11,5 @@ struct IGlRendererMaker
 
   virtual
   std::unique_ptr< IGlRenderer >
-  makeGlRenderer( IGlWindowAppearance & ) = 0;
+  makeGlRenderer() = 0;
 };

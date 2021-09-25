@@ -11,7 +11,6 @@
 #include <functional>
 #include <optional>
 #include <thread>
-#include <vector>
 
 namespace
 {
@@ -42,8 +41,6 @@ namespace
 
       std::future< std::unique_ptr< IGlRendererMaker >> futureGlRendererMaker;
       std::unique_ptr< IGlRenderer > renderer;
-
-      std::vector< std::function< void() >> runInMainThread;
     };
     Mutexed< RenderThreadShared > renderThreadShared;
     std::thread renderThread;
@@ -98,15 +95,6 @@ namespace
       glfwSetWindowRefreshCallback( window, _glfwWindowRefreshCallback );
     }
 
-    void enqueueForMainThread( std::function< void() > f )
-    {
-      renderThreadShared.withoutLock(
-          [f = std::move( f )]( RenderThreadShared &rts )
-          {
-            rts.runInMainThread.emplace_back( std::move( f ));
-          } );
-    }
-
     void startGlfw()
     {
       if( !glfwInit())
@@ -148,8 +136,7 @@ namespace
                         == rts.futureGlRendererMaker.wait_for( std::chrono::milliseconds( 0 )))
                     {
                       const std::unique_ptr< IGlRendererMaker > rendererMaker = rts.futureGlRendererMaker.get();
-                      rts.futureGlRendererMaker = {};
-                      rts.renderer = rendererMaker->makeGlRenderer( *this );
+                      rts.renderer = rendererMaker->makeGlRenderer();
                     }
 
                   if( rts.frameSizeUpdate )
@@ -212,20 +199,7 @@ namespace
       startRenderThread();
 
       while( !glfwWindowShouldClose( window ))
-      {
         glfwWaitEvents();
-
-        std::vector< std::function< void() >> runInMainThread;
-        renderThreadShared.withLock(
-            [&runInMainThread]( RenderThreadShared &rts )
-            {
-              if( !rts.runInMainThread.empty())
-                runInMainThread.swap( rts.runInMainThread );
-            } );
-
-        for( auto &fn : runInMainThread )
-          fn();
-      }
     }
 
     virtual void
@@ -252,28 +226,21 @@ namespace
     setContentAspectRatio( int numer, int denom )
     override
     {
-      enqueueForMainThread( std::bind( glfwSetWindowAspectRatio, window, numer, denom ));
-      glfwPostEmptyEvent();
+      glfwSetWindowAspectRatio( window, numer, denom );
     }
 
     virtual void
     setContentSize( int width, int height )
     override
     {
-      enqueueForMainThread( std::bind( glfwSetWindowSize, window, width, height ));
-      glfwPostEmptyEvent();
+      glfwSetWindowSize( window, width, height );
     }
 
     virtual void
-    setTitle( std::string title )
+    setTitle( const std::string &title )
     override
     {
-      enqueueForMainThread(
-          [=, title = std::move( title )]
-          {
-            glfwSetWindowTitle( window, title.c_str());
-          } );
-      glfwPostEmptyEvent();
+      glfwSetWindowTitle( window, title.c_str());
     }
   };
 }

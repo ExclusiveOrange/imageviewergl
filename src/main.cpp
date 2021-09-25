@@ -1,12 +1,10 @@
 #include "Destroyer.hpp"
-#include "GlRenderer_ImageRenderer.hpp"
 #include "GlfwWindow.hpp"
-#include "IGlRendererMaker.hpp"
-#include "RawImage_StbImage.hpp"
+#include "makeGlRendererMaker.hpp"
 
 #include <filesystem>
+#include <future>
 #include <iostream>
-#include <thread>
 
 //==============================================================================
 
@@ -69,59 +67,8 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  // The following with a promise, a future, a thread, and some confusing stuff:
-  //   We want to load the image from storage in a separate thread so that it doesn't
-  //   delay creation of the window and initialization of OpenGL.
-  //   We also want to allow creation of GlRenderer_ImageRenderer, but only after the
-  //   image has been loaded, and only if there were no errors.
-  //   We don't want to create the GlRenderer_ImageRenderer here because it will need
-  //   the OpenGL context to exist, and it doesn't exist yet, and we don't control it.
-  //   So instead we wait until our image is loaded, and then we provide a function
-  //   which can create a GlRenderer_ImageRenderer.
-  //   We give this function to the IGlWindow constructor through a std::future.
-  //   The IGlWindow can periodically check whether the future is ready, at which point it
-  //   can call our function which creates a GlRenderer_ImageRenderer.
-
-  std::thread preparingMakeGlRenderer;
-  std::unique_ptr< IGlWindow > window;
-
-  {
-    std::promise< std::unique_ptr< IGlRendererMaker > > promiseMakeGlRenderer;
-    std::future< std::unique_ptr< IGlRendererMaker > > futureMakeGlRenderer = promiseMakeGlRenderer.get_future();
-
-    preparingMakeGlRenderer = std::thread{
-        [imageFilename, promise = std::move( promiseMakeGlRenderer )]() mutable
-        {
-          try
-          {
-            std::unique_ptr< IRawImage > rawImage =
-                loadRawImage_StbImage( imageFilename.c_str());
-
-            struct GlRendererMaker : public IGlRendererMaker
-            {
-              std::unique_ptr< IRawImage > rawImage;
-
-              GlRendererMaker( std::unique_ptr< IRawImage > rawImage )
-                  : rawImage{ std::move( rawImage ) } {}
-
-              virtual
-              std::unique_ptr< IGlRenderer >
-              makeGlRenderer( IGlWindowAppearance &windowAppearance ) override
-              {
-                return makeGlRenderer_ImageRenderer( windowAppearance, std::move( rawImage ));
-              }
-            };
-
-            promise.set_value( std::make_unique< GlRendererMaker >( std::move( rawImage )));
-          }
-          catch( ... )
-          {
-            promise.set_exception( std::current_exception());
-          }
-        }};
-
-    window = makeGlfwWindow( std::move( futureMakeGlRenderer ));
-  }
+  std::unique_ptr< IGlWindow > window = makeGlfwWindow(
+      std::async( std::launch::async, makeGlRendererMaker, imageFilename ));
 
   //------------------------------------------------------------------------------
 
@@ -134,5 +81,4 @@ int main( int argc, char *argv[] )
   //------------------------------------------------------------------------------
 
   window->enterEventLoop();
-  preparingMakeGlRenderer.join();
 }

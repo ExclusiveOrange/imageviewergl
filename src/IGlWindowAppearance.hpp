@@ -11,5 +11,5 @@ struct IGlWindowAppearance
 
   virtual void setContentAspectRatio( int numer, int denom ) = 0;
   virtual void setContentSize( int w, int h ) = 0;
-  virtual void setTitle( std::string ) = 0;
+  virtual void setTitle( const std::string & ) = 0;
 };

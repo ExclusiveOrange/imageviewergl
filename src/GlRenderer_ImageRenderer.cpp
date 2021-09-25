@@ -73,13 +73,13 @@ namespace
             0,
             format, GL_UNSIGNED_BYTE, rawImage->getPixels());
 
-        if( rawImage->getNChannels() < 3 )
+        if( auto nChannels = rawImage->getNChannels(); nChannels == 1 || nChannels == 2 )
         {
           GLint swizzleMask[2][4]{
               { GL_RED, GL_RED, GL_RED, GL_ONE },
               { GL_RED, GL_RED, GL_RED, GL_GREEN }};
 
-          glTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask[rawImage->getNChannels() - 1] );
+          glTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask[ nChannels - 1] );
         }
 
         rawImage.reset();
@@ -92,25 +92,9 @@ namespace
       _texture = Destroyer{ [this] { glDeleteTextures( 1, &this->texture ); }};
     }
 
-    GlRenderer(
-        IGlWindowAppearance &windowAppearance,
-        std::unique_ptr< IRawImage > rawImage )
+    GlRenderer( std::unique_ptr< IRawImage > rawImage )
     noexcept( false )
     {
-      {
-        auto[xscale, yscale] = windowAppearance.getContentScale();
-        const int scaledWidth = int( xscale * float( rawImage->getWidth()));
-        const int scaledHeight = int( yscale * float( rawImage->getHeight()));
-        windowAppearance.setContentSize( scaledWidth, scaledHeight );
-      }
-
-      windowAppearance.setContentAspectRatio(
-          rawImage->getWidth(), rawImage->getHeight());
-
-      windowAppearance.setTitle( "test" );
-
-      // TODO: recreate centering mechanism using IGlWindow methods
-      //centerGlfwWindow( window, glfwGetPrimaryMonitor());
       makeTextureFromImage( std::move( rawImage ));
       makeShaderProgram();
       makeEmptyVertexArray();
@@ -129,9 +113,7 @@ namespace
 } // namespace
 
 std::unique_ptr< IGlRenderer >
-makeGlRenderer_ImageRenderer(
-    IGlWindowAppearance &windowAppearance,
-    std::unique_ptr< IRawImage > rawImage )
+makeGlRenderer_ImageRenderer( std::unique_ptr< IRawImage > rawImage )
 {
-  return std::make_unique< GlRenderer >( windowAppearance, std::move( rawImage ));
+  return std::make_unique< GlRenderer >( std::move( rawImage ));
 }
