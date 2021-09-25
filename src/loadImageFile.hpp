@@ -5,7 +5,7 @@
 #include <memory>
 
 std::unique_ptr< IRawImage >
-loadRawImage_StbImage( const char *filename )
+loadImageFile( const char *filename )
 noexcept( false ); // throws ErrorString
 
 

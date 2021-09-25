@@ -1,12 +1,12 @@
 #include "makeGlRendererMaker.hpp"
 
 #include "GlRenderer_ImageRenderer.hpp"
-#include "RawImage_StbImage.hpp"
+#include "loadImageFile.hpp"
 
 std::unique_ptr< IGlRendererMaker >
 makeGlRendererMaker( std::string imageFilename )
 {
-  std::unique_ptr< IRawImage > rawImage = loadRawImage_StbImage( imageFilename.c_str());
+  std::unique_ptr< IRawImage > rawImage = loadImageFile( imageFilename.c_str());
 
   struct GlRendererMaker : public IGlRendererMaker
   {

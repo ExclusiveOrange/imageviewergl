@@ -31,20 +31,20 @@ namespace
       // get error 1282 from glDrawArrays when I don't use any vertex array objects...
       // shouldn't need any because the vertices are generated in the vert shader, but maybe I need something here...
       glGenVertexArrays( 1, &emptyVertexArray );
-      _emptyVertexArray = Destroyer{ [this] { glDeleteVertexArrays( 1, &this->emptyVertexArray ); }};
+      _emptyVertexArray = Destroyer{ [ this ] { glDeleteVertexArrays( 1, &this->emptyVertexArray ); }};
     }
 
     void makeShaderProgram()
     noexcept( false )
     {
       vertShader = makeShader( readFile( vertShaderFilename ), GL_VERTEX_SHADER );
-      _vertShader = Destroyer{ [this] { glDeleteShader( this->vertShader ); }};
+      _vertShader = Destroyer{ [ this ] { glDeleteShader( this->vertShader ); }};
 
       fragShader = makeShader( readFile( fragShaderFilename ), GL_FRAGMENT_SHADER );
-      _fragShader = Destroyer{ [this] { glDeleteShader( this->fragShader ); }};
+      _fragShader = Destroyer{ [ this ] { glDeleteShader( this->fragShader ); }};
 
       shaderProgram = glCreateProgram();
-      _shaderProgram = Destroyer{ [this] { glDeleteProgram( this->shaderProgram ); }};
+      _shaderProgram = Destroyer{ [ this ] { glDeleteProgram( this->shaderProgram ); }};
       glAttachShader( shaderProgram, vertShader );
       glAttachShader( shaderProgram, fragShader );
       glLinkProgram( shaderProgram );
@@ -57,8 +57,9 @@ namespace
       glGenTextures( 1, &texture );
       glBindTexture( GL_TEXTURE_2D, texture );
       {
+        const ImageDimensions dimensions = rawImage->getDimensions();
         const GLenum formatByNumChannels[4]{ GL_RED, GL_RG, GL_RGB, GL_RGBA };
-        GLenum format = formatByNumChannels[rawImage->getNChannels() - 1];
+        GLenum format = formatByNumChannels[ dimensions.nChannels - 1 ];
 
         // odd-width RGB source images are misaligned byte-wise without these next four lines
         // thanks: https://stackoverflow.com/a/7381121
@@ -69,17 +70,17 @@ namespace
 
         glTexImage2D(
             GL_TEXTURE_2D, 0,
-            GL_RGBA, rawImage->getWidth(), rawImage->getHeight(),
+            GL_RGBA, dimensions.width, dimensions.height,
             0,
             format, GL_UNSIGNED_BYTE, rawImage->getPixels());
 
-        if( auto nChannels = rawImage->getNChannels(); nChannels == 1 || nChannels == 2 )
+        if( dimensions.nChannels == 1 || dimensions.nChannels == 2 )
         {
           GLint swizzleMask[2][4]{
               { GL_RED, GL_RED, GL_RED, GL_ONE },
               { GL_RED, GL_RED, GL_RED, GL_GREEN }};
 
-          glTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask[ nChannels - 1] );
+          glTexParameteriv( GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleMask[ dimensions.nChannels - 1 ] );
         }
 
         rawImage.reset();
@@ -89,7 +90,7 @@ namespace
         glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
         glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
       }
-      _texture = Destroyer{ [this] { glDeleteTextures( 1, &this->texture ); }};
+      _texture = Destroyer{ [ this ] { glDeleteTextures( 1, &this->texture ); }};
     }
 
     GlRenderer( std::unique_ptr< IRawImage > rawImage )

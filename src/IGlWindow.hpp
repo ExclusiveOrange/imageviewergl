@@ -1,6 +1,8 @@
 #pragma once
 
-struct IGlWindow
+#include "IGlWindowAppearance.hpp"
+
+struct IGlWindow : IGlWindowAppearance
 {
   virtual ~IGlWindow() = default;
   virtual void enterEventLoop() = 0;

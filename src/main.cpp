@@ -1,6 +1,7 @@
 #include "Destroyer.hpp"
 #include "GlfwWindow.hpp"
 #include "makeGlRendererMaker.hpp"
+#include "readImageDimensions.hpp"
 
 #include <filesystem>
 #include <future>
@@ -72,7 +73,14 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-//  window->setTitle( imageFilename.c_str());
+  window->setTitle( imageFilename.c_str());
+
+  //------------------------------------------------------------------------------
+
+  const ImageDimensions imageDimensions = readImageDimensions( imageFilename.c_str() );
+
+  window->setContentAspectRatio( imageDimensions.width, imageDimensions.height );
+  window->setContentSize( imageDimensions.width, imageDimensions.height );
 
   //------------------------------------------------------------------------------
 
