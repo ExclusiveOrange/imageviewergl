@@ -2,6 +2,7 @@
 
 #include "Destroyer.hpp"
 #include "ErrorString.hpp"
+#include "GlWindowInputHandler.hpp"
 #include "Mutexed.hpp"
 
 #define GL_SILENCE_DEPRECATION // MacOS has deprecated OpenGL - it still works up to 4.1 for now
@@ -21,7 +22,7 @@ namespace
 
 //==============================================================================
 
-  struct GlfwWindow : public IGlWindow, public IGlWindowAppearance
+  struct GlfwWindow : IGlWindow
   {
     struct
     {
@@ -33,10 +34,10 @@ namespace
     GLFWwindow *window{};
 
     enum class RenderThreadState { shouldWait, shouldRender, shouldQuit };
-    struct FrameSize { int width, height; };
     struct RenderThreadShared
     {
       RenderThreadState state = RenderThreadState::shouldRender;
+      struct FrameSize { int width, height; };
       std::optional< FrameSize > frameSizeUpdate;
 
       std::future< std::unique_ptr< IGlRendererMaker >> futureGlRendererMaker;
@@ -45,23 +46,43 @@ namespace
     Mutexed< RenderThreadShared > renderThreadShared;
     std::thread renderThread;
 
+    std::unique_ptr< GlWindowInputHandler > inputHandler;
+
     //------------------------------------------------------------------------------
 
-    static void
-    _glfwFramebufferSizeCallback( GLFWwindow *window, int width, int height )
+    struct GlfwRenderCallbacks
     {
-      auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
-      gw->renderThreadShared.withLock(
-          [=]( RenderThreadShared &rts ) { rts.frameSizeUpdate = { width, height }; } );
-    }
+      static void
+      framebufferSize( GLFWwindow *window, int width, int height )
+      {
+        auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
+        gw->renderThreadShared.withLock(
+            [ = ]( RenderThreadShared &rts ) { rts.frameSizeUpdate = { width, height }; } );
+      }
 
-    static void
-    _glfwWindowRefreshCallback( GLFWwindow *window )
+      static void
+      windowRefresh( GLFWwindow *window )
+      {
+        auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
+        gw->renderThreadShared.withLockThenNotify(
+            [ = ]( RenderThreadShared &rts ) { rts.state = RenderThreadState::shouldRender; } );
+      }
+    };
+
+    //------------------------------------------------------------------------------
+
+    struct GlfwInputCallbacks
     {
-      auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
-      gw->renderThreadShared.withLockThenNotify(
-          [=]( RenderThreadShared &rts ) { rts.state = RenderThreadState::shouldRender; } );
-    }
+      static void
+      scroll( GLFWwindow *window, double xoffset, double yoffset )
+      {
+        auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
+        if( gw->inputHandler )
+          gw->inputHandler->onScroll( xoffset, yoffset );
+      }
+    };
+
+    //------------------------------------------------------------------------------
 
     static void
     startGlew( GLFWwindow *window )
@@ -88,11 +109,16 @@ namespace
       if( !window )
         throw ErrorString( "glfwCreateWindow(..) failed" );
 
-      destroyers.glfwCreateWindow = { [window = this->window] { glfwDestroyWindow( window ); }};
+      destroyers.glfwCreateWindow = { [ window = this->window ] { glfwDestroyWindow( window ); }};
 
       glfwSetWindowUserPointer( window, this );
-      glfwSetFramebufferSizeCallback( window, _glfwFramebufferSizeCallback );
-      glfwSetWindowRefreshCallback( window, _glfwWindowRefreshCallback );
+
+      // glfw callbacks involving render thread
+      glfwSetFramebufferSizeCallback( window, GlfwRenderCallbacks::framebufferSize );
+      glfwSetWindowRefreshCallback( window, GlfwRenderCallbacks::windowRefresh );
+
+      // glfw input callbacks (not render thread)
+      glfwSetScrollCallback( window, GlfwInputCallbacks::scroll );
     }
 
     void startGlfw()
@@ -112,7 +138,7 @@ namespace
       glfwMakeContextCurrent( nullptr );
 
       renderThread = std::thread{
-          [this]
+          [ this ]
           {
             // activate the OpenGL context in this thread (the render thread);
             // however it is now unusable in the original thread
@@ -123,7 +149,7 @@ namespace
 
             bool shouldQuit{};
             auto whileLocked =
-                [&shouldQuit, this]( RenderThreadShared &rts )
+                [ &shouldQuit, this ]( RenderThreadShared &rts )
                 {
                   if( rts.state == RenderThreadState::shouldQuit )
                   {
@@ -170,7 +196,8 @@ namespace
     //------------------------------------------------------------------------------
 
     GlfwWindow(
-        std::future< std::unique_ptr< IGlRendererMaker >> futureGlRendererMaker )
+        std::future< std::unique_ptr< IGlRendererMaker >>
+        futureGlRendererMaker )
     {
       startGlfw();
       createGlfwWindow();
@@ -178,19 +205,25 @@ namespace
       glfwSwapInterval( 0 );
 
       renderThreadShared.withLock(
-          [&]( RenderThreadShared &rts )
+          [ & ](
+              RenderThreadShared &rts
+          )
           {
-            rts.futureGlRendererMaker = std::move( futureGlRendererMaker );
-          } );
+            rts.
+                   futureGlRendererMaker = std::move( futureGlRendererMaker );
+          }
+      );
     }
 
-    virtual ~GlfwWindow() override
+    virtual ~
+    GlfwWindow()
+    override
     {
       stopRenderThread();
     }
 
-    //------------------------------------------------------------------------------
-    // IGlWindow overrides
+//------------------------------------------------------------------------------
+// IGlWindow overrides
 
     virtual void
     enterEventLoop()
@@ -198,49 +231,64 @@ namespace
     {
       startRenderThread();
 
-      while( !glfwWindowShouldClose( window ))
+      while( !
+          glfwWindowShouldClose( window )
+          )
         glfwWaitEvents();
     }
 
     virtual void
     hide()
-    override { glfwHideWindow( window ); }
+    override
+    {
+      glfwHideWindow( window );
+    }
 
     virtual void
     show()
-    override { glfwShowWindow( window ); }
+    override
+    {
+      glfwShowWindow( window );
+    }
 
-    //------------------------------------------------------------------------------
-    // IGlWindowAppearance overrides
+//------------------------------------------------------------------------------
+// IGlWindowAppearance overrides
 
     virtual XYf
     getContentScale()
     override
     {
       XYf xyf;
-      glfwGetWindowContentScale( window, &xyf.x, &xyf.y );
-      return xyf;
+      glfwGetWindowContentScale( window, &xyf
+          .x, &xyf.y );
+      return
+          xyf;
     }
 
     virtual void
     setContentAspectRatio( int numer, int denom )
     override
     {
-      glfwSetWindowAspectRatio( window, numer, denom );
+      glfwSetWindowAspectRatio( window, numer, denom
+      );
     }
 
     virtual void
     setContentSize( int width, int height )
     override
     {
-      glfwSetWindowSize( window, width, height );
+      glfwSetWindowSize( window, width, height
+      );
     }
 
     virtual void
     setTitle( const std::string &title )
     override
     {
-      glfwSetWindowTitle( window, title.c_str());
+      glfwSetWindowTitle( window, title
+          .
+              c_str()
+      );
     }
   };
 }

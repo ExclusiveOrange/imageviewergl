@@ -68,6 +68,13 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
+  // In a separate thread calls makeGlRendererMaker through std::async;
+  // at the same time, passes a std::future to makeGlfwWindow(..),
+  // which will be fulfilled when the image has been loaded in makeGlRendererMaker.
+  // This allows makeGlfwWindow to create the window and initialize GLFW and OpenGL
+  // simultaneously with the image being loaded from the filesystem, to hopefully
+  // reduce the total time it takes before the user sees the image on screen.
+
   std::unique_ptr< IGlWindow > window = makeGlfwWindow(
       std::async( std::launch::async, makeGlRendererMaker, imageFilename ));
 
@@ -75,14 +82,10 @@ int main( int argc, char *argv[] )
 
   window->setTitle( imageFilename.c_str());
 
-  //------------------------------------------------------------------------------
-
   const ImageDimensions imageDimensions = readImageDimensions( imageFilename.c_str() );
 
   window->setContentAspectRatio( imageDimensions.width, imageDimensions.height );
   window->setContentSize( imageDimensions.width, imageDimensions.height );
-
-  //------------------------------------------------------------------------------
 
   window->show();
 
