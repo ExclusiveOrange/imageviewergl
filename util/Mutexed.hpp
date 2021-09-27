@@ -15,6 +15,7 @@ class Mutexed : NoCopy
 
 public:
   template< typename ... Args >
+  explicit
   Mutexed( Args &&... args )
       : v{ std::forward< Args >( args )... } {}
 

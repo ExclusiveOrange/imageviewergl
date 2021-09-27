@@ -4,7 +4,7 @@
 #include "loadImageFile.hpp"
 
 std::unique_ptr< IGlRendererMaker >
-makeGlRendererMaker( std::string imageFilename )
+makeGlRendererMaker( const std::string &imageFilename )
 {
   std::unique_ptr< IRawImage > rawImage = loadImageFile( imageFilename.c_str());
 
@@ -12,10 +12,10 @@ makeGlRendererMaker( std::string imageFilename )
   {
     std::unique_ptr< IRawImage > rawImage;
 
+    explicit
     GlRendererMaker( std::unique_ptr< IRawImage > rawImage )
         : rawImage{ std::move( rawImage ) } {}
 
-    virtual
     std::unique_ptr< IGlRenderer >
     makeGlRenderer() override
     {

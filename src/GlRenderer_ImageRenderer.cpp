@@ -93,6 +93,7 @@ namespace
       _texture = Destroyer{ [ this ] { glDeleteTextures( 1, &this->texture ); }};
     }
 
+    explicit
     GlRenderer( std::unique_ptr< IRawImage > rawImage )
     noexcept( false )
     {
@@ -101,9 +102,9 @@ namespace
       makeEmptyVertexArray();
     }
 
-    virtual ~GlRenderer() override = default;
+    ~GlRenderer() override = default;
 
-    virtual void render() override
+    void render() override
     {
       glUseProgram( shaderProgram );
       glBindTexture( GL_TEXTURE_2D, texture );

@@ -9,22 +9,23 @@ namespace
   {
     stbi_uc *pixels{};
 
+    explicit
     RawImage( const char *filename )
+    : pixels{ stbi_load( filename, &width, &height, &nChannels, 0 )}
     {
-      pixels = stbi_load( filename, &width, &height, &nChannels, 0 );
       if( !pixels )
         throw ErrorString( "failed to load image from file ", filename, "\n",
                            "because: ", stbi_failure_reason());
     }
 
-    virtual ~RawImage() override
+    ~RawImage() override
     {
-      if( pixels )
+      if( pixels ) // 2021.09.27: CLion warns that the condition is always false: this is a CLion or Clang bug; debugging with a breakpoint shows the condition is not false
         stbi_image_free( pixels );
     }
 
-    virtual ImageDimensions getDimensions() override { return *this; }
-    virtual const unsigned char *getPixels() override { return pixels; }
+    ImageDimensions getDimensions() override { return *this; /* NOLINT(cppcoreguidelines-slicing) */ }
+    const unsigned char *getPixels() override { return pixels; }
   };
 } // namespace
 

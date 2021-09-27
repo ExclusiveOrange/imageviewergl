@@ -4,20 +4,17 @@
 
 #include <sstream>
 
-namespace detail
+namespace detail::toString
 {
-namespace toString
-{
-extern thread_local std::ostringstream ss;
-}
+  extern thread_local std::ostringstream ss;
 }
 
 template< class ... Ts >
 std::string
-toString( const Ts & ...vs )
+toString( const Ts &...vs )
 {
   using namespace detail::toString;
-  ss.str("");
+  ss.str( "" );
   ss.clear();
   return ((ss << vs), ..., ss.str());
 }

@@ -1,12 +1,14 @@
 #include "makeShader.hpp"
 
+#include <stdexcept>
+
 GLuint
 makeShader(
-    const std::vector< char > &source,
+    const std::vector<char> &source,
     GLenum shaderType )
 {
-  const GLchar *pShaderSource[] = { source.data() }; // need GLchar**
-  const GLint shaderSourceLength[] = { (GLint)source.size() };
+  const GLchar *pShaderSource[]{ source.data() }; // need GLchar**
+  const GLint shaderSourceLength[]{ (GLint)source.size() };
   GLuint shader = glCreateShader( shaderType );
   glShaderSource( shader, 1, pShaderSource, shaderSourceLength );
 
@@ -16,13 +18,13 @@ makeShader(
   if( isCompiled == GL_TRUE )
     return shader; // success
 
-  // error happened: get details and return nullopt
+  // error
   GLint logLength = 0;
   glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &logLength );
   // The logLength includes the NULL character
-  std::vector< GLchar > errorLog( logLength );
+  std::vector<GLchar> errorLog( logLength );
   glGetShaderInfoLog( shader, logLength, &logLength, &errorLog[0] );
   glDeleteShader( shader );
 
-  throw std::runtime_error( errorLog.data() );
+  throw std::runtime_error( errorLog.data());
 }

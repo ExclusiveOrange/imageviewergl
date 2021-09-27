@@ -1,9 +1,6 @@
 #include "toString.hpp"
 
-namespace detail
+namespace detail::toString
 {
-namespace toString
-{
-thread_local std::ostringstream ss;
-}
+  thread_local std::ostringstream ss;
 }

@@ -6,4 +6,4 @@
 #include <string>
 
 std::unique_ptr< IGlRendererMaker >
-makeGlRendererMaker( std::string imageFilename );
+makeGlRendererMaker( const std::string &imageFilename );

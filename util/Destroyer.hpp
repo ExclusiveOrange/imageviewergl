@@ -5,17 +5,15 @@
 
 struct Destroyer
 {
-  using fn_t = std::function< void( void ) >;
+  using fn_t = std::function<void( void )>;
 
   Destroyer() = default;
 
-  Destroyer( const fn_t &fnOnDestroy )
-      : fnOnDestroy{ fnOnDestroy } {}
-
+  explicit
   Destroyer( fn_t &&fnOnDestroy )
       : fnOnDestroy{ std::move( fnOnDestroy ) } {}
 
-  Destroyer( Destroyer &&other )
+  Destroyer( Destroyer &&other ) noexcept
       : fnOnDestroy{ std::exchange( other.fnOnDestroy, {} ) } {}
 
   ~Destroyer()
@@ -24,7 +22,7 @@ struct Destroyer
       fnOnDestroy();
   }
 
-  Destroyer &operator=( Destroyer &&other )
+  Destroyer &operator=( Destroyer &&other ) noexcept
   {
     if( fnOnDestroy )
       fnOnDestroy();

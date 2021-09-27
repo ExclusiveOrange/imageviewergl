@@ -54,7 +54,7 @@ int main( int argc, char *argv[] )
 
   // remember initial working directory (might be not exe directory)
   const std::filesystem::path initialWorkingDirectory = std::filesystem::current_path();
-  Destroyer revertWorkingDirectory{ [&] { std::filesystem::current_path( initialWorkingDirectory ); }};
+  Destroyer revertWorkingDirectory{ [=] { std::filesystem::current_path( initialWorkingDirectory ); }};
 
   {
     // set working directory to this exe (so dll's can be found, at least on Windows)
@@ -81,7 +81,7 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  window->setTitle( imageFilename.c_str());
+  window->setTitle( imageFilename );
 
   const ImageDimensions imageDimensions = readImageDimensions( imageFilename.c_str() );
 
@@ -94,14 +94,12 @@ int main( int argc, char *argv[] )
 
   struct InputHandler : GlWindowInputHandler
   {
-    virtual void
-    onCursorPosition( double xPos, double yPos ) override
+    void onCursorPosition( double xPos, double yPos ) override
     {
       std::cout << "onCursorPosition (" << xPos << ", " << yPos << ")\n";
     }
 
-    virtual void
-    onScroll( double xAmount, double yAmount ) override
+    void onScroll( double xAmount, double yAmount ) override
     {
       std::cout << "onScroll (" << xAmount << ", " << yAmount << ")\n";
     }
