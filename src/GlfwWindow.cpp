@@ -46,7 +46,7 @@ namespace
     Mutexed< RenderThreadShared > renderThreadShared;
     std::thread renderThread;
 
-    std::unique_ptr< GlWindowInputHandler > inputHandler;
+    std::shared_ptr< GlWindowInputHandler > inputHandler;
 
     //------------------------------------------------------------------------------
 
@@ -77,8 +77,14 @@ namespace
       scroll( GLFWwindow *window, double xoffset, double yoffset )
       {
         auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
-        if( gw->inputHandler )
-          gw->inputHandler->onScroll( xoffset, yoffset );
+        gw->inputHandler->onScroll( xoffset, yoffset );
+      }
+
+      static void
+      cursorPosition( GLFWwindow *window, double xpos, double ypos )
+      {
+        auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
+        gw->inputHandler->onCursorPosition( xpos, ypos );
       }
     };
 
@@ -119,6 +125,7 @@ namespace
 
       // glfw input callbacks (not render thread)
       glfwSetScrollCallback( window, GlfwInputCallbacks::scroll );
+      glfwSetCursorPosCallback( window, GlfwInputCallbacks::cursorPosition );
     }
 
     void startGlfw()
@@ -198,6 +205,7 @@ namespace
     GlfwWindow(
         std::future< std::unique_ptr< IGlRendererMaker >>
         futureGlRendererMaker )
+        : inputHandler{ std::make_shared< GlWindowInputHandler >() }
     {
       startGlfw();
       createGlfwWindow();
@@ -205,13 +213,7 @@ namespace
       glfwSwapInterval( 0 );
 
       renderThreadShared.withLock(
-          [ & ](
-              RenderThreadShared &rts
-          )
-          {
-            rts.
-                   futureGlRendererMaker = std::move( futureGlRendererMaker );
-          }
+          [ & ]( RenderThreadShared &rts ) { rts.futureGlRendererMaker = std::move( futureGlRendererMaker ); }
       );
     }
 
@@ -226,14 +228,15 @@ namespace
 // IGlWindow overrides
 
     virtual void
-    enterEventLoop()
+    enterEventLoop( std::shared_ptr< GlWindowInputHandler > _inputHandler )
     override
     {
+      if( _inputHandler )
+        this->inputHandler = std::move( _inputHandler );
+
       startRenderThread();
 
-      while( !
-          glfwWindowShouldClose( window )
-          )
+      while( !glfwWindowShouldClose( window ))
         glfwWaitEvents();
     }
 
@@ -259,10 +262,8 @@ namespace
     override
     {
       XYf xyf;
-      glfwGetWindowContentScale( window, &xyf
-          .x, &xyf.y );
-      return
-          xyf;
+      glfwGetWindowContentScale( window, &xyf.x, &xyf.y );
+      return xyf;
     }
 
     virtual void
@@ -285,9 +286,7 @@ namespace
     setTitle( const std::string &title )
     override
     {
-      glfwSetWindowTitle( window, title
-          .
-              c_str()
+      glfwSetWindowTitle( window, title.c_str()
       );
     }
   };

@@ -1,5 +1,6 @@
 #include "Destroyer.hpp"
 #include "GlfwWindow.hpp"
+#include "GlWindowInputHandler.hpp"
 #include "makeGlRendererMaker.hpp"
 #include "readImageDimensions.hpp"
 
@@ -91,5 +92,20 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  window->enterEventLoop();
+  struct InputHandler : GlWindowInputHandler
+  {
+    virtual void
+    onCursorPosition( double xPos, double yPos ) override
+    {
+      std::cout << "onCursorPosition (" << xPos << ", " << yPos << ")\n";
+    }
+
+    virtual void
+    onScroll( double xAmount, double yAmount ) override
+    {
+      std::cout << "onScroll (" << xAmount << ", " << yAmount << ")\n";
+    }
+  };
+
+  window->enterEventLoop( std::make_unique< InputHandler >() );
 }
