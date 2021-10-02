@@ -15,6 +15,15 @@
 
 namespace
 {
+  void
+  startGlew( GLFWwindow *window )
+  {
+    glfwMakeContextCurrent( window );
+
+    if( GLEW_OK != glewInit())
+      throw ErrorString( "glewInit() failed" );
+  }
+
   void throwGlfwErrorAsString( int error, const char *description )
   {
     throw ErrorString( "GLFW error ", error, ": ", description );
@@ -22,7 +31,7 @@ namespace
 
 //==============================================================================
 
-  struct GlfwWindow : IGlWindow
+  struct WindowState
   {
     struct
     {
@@ -37,6 +46,7 @@ namespace
     struct RenderThreadShared
     {
       RenderThreadState state = RenderThreadState::shouldRender;
+
       struct FrameSize { int width, height; };
       std::optional<FrameSize> frameSizeUpdate;
 
@@ -46,10 +56,14 @@ namespace
     Mutexed<RenderThreadShared> renderThreadShared;
     std::thread renderThread;
 
-    std::shared_ptr<GlWindowInputHandler> inputHandler;
+    std::shared_ptr<GlWindowInputHandler> inputHandler
+        { std::make_shared<GlWindowInputHandler>() }; // initialize with a default value so we don't have to check validity later
+  };
 
-    //------------------------------------------------------------------------------
+//==============================================================================
 
+  struct GlfwWindow : IGlWindow, WindowState
+  {
     struct GlfwRenderCallbacks
     {
       static void
@@ -87,17 +101,6 @@ namespace
         gw->inputHandler->onCursorPosition( xpos, ypos );
       }
     };
-
-    //------------------------------------------------------------------------------
-
-    static void
-    startGlew( GLFWwindow *window )
-    {
-      glfwMakeContextCurrent( window );
-
-      if( GLEW_OK != glewInit())
-        throw ErrorString( "glewInit() failed" );
-    }
 
     //------------------------------------------------------------------------------
 
@@ -204,7 +207,6 @@ namespace
     GlfwWindow(
         std::future<std::unique_ptr<IGlRendererMaker >>
         futureGlRendererMaker )
-        : inputHandler{ std::make_shared<GlWindowInputHandler>() }
     {
       startGlfw();
       createGlfwWindow();
@@ -212,8 +214,7 @@ namespace
       glfwSwapInterval( 0 );
 
       renderThreadShared.withLock(
-          [&]( RenderThreadShared &rts ) { rts.futureGlRendererMaker = std::move( futureGlRendererMaker ); }
-      );
+          [&]( RenderThreadShared &rts ) { rts.futureGlRendererMaker = std::move( futureGlRendererMaker ); } );
     }
 
     ~GlfwWindow()
@@ -268,16 +269,14 @@ namespace
     setContentAspectRatio( int numer, int denom )
     override
     {
-      glfwSetWindowAspectRatio( window, numer, denom
-      );
+      glfwSetWindowAspectRatio( window, numer, denom );
     }
 
     void
     setContentSize( int width, int height )
     override
     {
-      glfwSetWindowSize( window, width, height
-      );
+      glfwSetWindowSize( window, width, height );
     }
 
     void setTitle( const std::string &title )
