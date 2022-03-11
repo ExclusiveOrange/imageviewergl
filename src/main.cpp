@@ -4,9 +4,28 @@
 #include "makeGlRendererMaker.hpp"
 #include "readImageDimensions.hpp"
 
+#include <codecvt>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <future>
 #include <iostream>
+#include <locale>
+
+//==============================================================================
+
+// thanks https://stackoverflow.com/a/13556072
+// this solves a problem that CMake + CLion cannot: different link options for Windows depending on Debug or Release
+#ifdef _MSC_VER
+#include <windows.h>
+#   ifdef NDEBUG
+#     pragma message("Windows Release Mode")
+#     pragma comment(linker, "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
+#   else
+#     pragma message("Windows Debug Mode")
+#     pragma comment(linker, "/SUBSYSTEM:CONSOLE")
+#   endif
+#endif
 
 //==============================================================================
 
@@ -40,7 +59,7 @@ namespace
 
 //==============================================================================
 
-int main( int argc, char *argv[] )
+int Main( int argc, char *argv[] )
 {
   // TODO: add "dear imgui", for eventual messages or image information or application settings
 
@@ -69,6 +88,8 @@ int main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
+  // TODO: this promise mechanism doesn't always work: I have found rarely if the image finishes loading before the window is ready, nothing is shown
+
   // In a separate thread calls makeGlRendererMaker through std::async;
   // at the same time, passes a std::future to makeGlfwWindow(..),
   // which will be fulfilled when the image has been loaded in makeGlRendererMaker.
@@ -76,14 +97,17 @@ int main( int argc, char *argv[] )
   // simultaneously with the image being loaded from the filesystem, to hopefully
   // reduce the total time it takes before the user sees the image on screen.
 
-  std::unique_ptr< IGlWindow > window = makeGlfwWindow(
+  std::unique_ptr<IGlWindow> window = makeGlfwWindow(
       std::async( std::launch::async, makeGlRendererMaker, imageFilename ));
 
   //------------------------------------------------------------------------------
 
   window->setTitle( imageFilename );
 
-  const ImageDimensions imageDimensions = readImageDimensions( imageFilename.c_str() );
+  // TODO: non-ASCII characters in filename create problems from this point.
+  // TODO: may need to try wstring instead of std::string
+
+  const ImageDimensions imageDimensions = readImageDimensions( imageFilename.c_str());
 
   window->setContentAspectRatio( imageDimensions.width, imageDimensions.height );
   window->setContentSize( imageDimensions.width, imageDimensions.height );
@@ -105,5 +129,59 @@ int main( int argc, char *argv[] )
     }
   };
 
-  window->enterEventLoop( std::make_unique< InputHandler >() );
+  window->enterEventLoop( std::make_unique<InputHandler>());
+
+  return 0;
 }
+
+//==============================================================================
+
+#ifdef _MSC_VER
+
+int main( int /*argc*/, char */*argv*/[] )
+{
+  setlocale( LC_ALL, ".UTF8" );
+
+  int argc;
+  char **args;
+
+  {
+    LPWSTR *wArgs = CommandLineToArgvW( GetCommandLineW(), &argc );
+
+    if( argc < 1 )
+      return -1;
+
+    // convert wchar_t args to utf8 args
+    args = new char *[argc];
+    {
+      std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+      for( int i = 0; i < argc; ++i )
+        args[i] = _strdup( converter.to_bytes( wArgs[i] ).c_str());
+    }
+
+    LocalFree( wArgs );
+  }
+
+  // call the real Main
+  int mainRet = Main( argc, args );
+
+  // free utf8 args
+  for( int i = 0; i < argc; ++i )
+    free( args[i] );
+  delete args;
+
+  return mainRet;
+}
+
+#else
+
+int main(int argc, char *argv[])
+{
+  setlocale( LC_ALL, ".UTF8" );
+
+  // call the real Main
+  return Main(argc, argv);
+}
+
+#endif
+

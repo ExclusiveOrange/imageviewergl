@@ -12,6 +12,10 @@ project(imageviewergl CXX)
 # File / Settings / Build, Execution, Deployment / CMake / (Profile) / CMake options:
 #    -GNinja -DCMAKE_TOOLCHAIN_FILE=c:/vcpkg/scripts/buildsystems/vcpkg.cmake
 #
+# NOTICE: if on Windows using vcpkg and CMake suddenly can't find anything,
+# consider reinstalling vcpkg (delete vcpkg directory, follow instructions online to re-install).
+# No idea why, but mine stopped working and reinstalling it was the only way to get it working again.
+# This also means using vcpkg to reinstall all dependencies.
 
 find_package(glfw3 3.3.4 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
@@ -20,12 +24,7 @@ find_package(GLEW REQUIRED)
 
 file(GLOB cpps src/*.cpp util/*.cpp)
 
-if (WIN32)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
-    add_executable(${PROJECT_NAME} WIN32 ${cpps})
-else ()
-    add_executable(${PROJECT_NAME} ${cpps})
-endif ()
+add_executable(${PROJECT_NAME} ${cpps})
 
 target_include_directories(${PROJECT_NAME} PRIVATE sub/stb)
 target_include_directories(${PROJECT_NAME} PRIVATE util)
