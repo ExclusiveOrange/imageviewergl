@@ -118,7 +118,7 @@ namespace
       if( !window )
         throw ErrorString( "glfwCreateWindow(..) failed" );
 
-      destroyers.glfwCreateWindow = { [window = this->window] { glfwDestroyWindow( window ); }};
+      destroyers.glfwCreateWindow = Destroyer{ [window = this->window] { glfwDestroyWindow( window ); }};
 
       glfwSetWindowUserPointer( window, this );
 
@@ -136,7 +136,7 @@ namespace
       if( !glfwInit())
         throw ErrorString( "glfwInit() failed" );
 
-      destroyers.glfwInit = { glfwTerminate };
+      destroyers.glfwInit = Destroyer{ glfwTerminate };
 
       glfwSetErrorCallback( throwGlfwErrorAsString );
     }

@@ -104,9 +104,6 @@ int Main( int argc, char *argv[] )
 
   window->setTitle( imageFilename );
 
-  // TODO: non-ASCII characters in filename create problems from this point.
-  // TODO: may need to try wstring instead of std::string
-
   const ImageDimensions imageDimensions = readImageDimensions( imageFilename.c_str());
 
   window->setContentAspectRatio( imageDimensions.width, imageDimensions.height );
