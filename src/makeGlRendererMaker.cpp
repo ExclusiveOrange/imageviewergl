@@ -3,6 +3,9 @@
 #include "GlRenderer_ImageRenderer.hpp"
 #include "loadImageFile.hpp"
 
+// DELETE
+#include <iostream>
+
 std::unique_ptr< IGlRendererMaker >
 makeGlRendererMaker( const std::string &imageFilename )
 {

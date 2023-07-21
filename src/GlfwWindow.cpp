@@ -13,6 +13,9 @@
 #include <optional>
 #include <thread>
 
+// DELETE
+#include <iostream>
+
 namespace
 {
   void
@@ -165,13 +168,7 @@ namespace
                     return false;
 
                   if( !rts.renderer )
-                    if( std::future_status::ready
-                        == rts.futureGlRendererMaker.wait_for( std::chrono::milliseconds( 0 )))
-                    {
-                      const std::unique_ptr<IGlRendererMaker> rendererMaker = rts.futureGlRendererMaker.get();
-                      rts.renderer = rendererMaker->makeGlRenderer();
-                      rts.state = RenderThreadState::shouldRender;
-                    }
+                    rts.renderer = rts.futureGlRendererMaker.get()->makeGlRenderer();
 
                   if( rts.frameSizeUpdate )
                   {
@@ -179,8 +176,7 @@ namespace
                     glViewport( 0, 0, width, height );
                   }
 
-                  if( rts.renderer )
-                    rts.renderer->render();
+                  rts.renderer->render();
 
                   glfwSwapBuffers( this->window );
 
