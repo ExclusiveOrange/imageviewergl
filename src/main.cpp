@@ -117,12 +117,12 @@ int Main( int argc, char *argv[] )
   {
     void onCursorPosition( double xPos, double yPos ) override
     {
-      std::cout << "onCursorPosition (" << xPos << ", " << yPos << ")\n";
+      // std::cout << "onCursorPosition (" << xPos << ", " << yPos << ")\n";
     }
 
     void onScroll( double xAmount, double yAmount ) override
     {
-      std::cout << "onScroll (" << xAmount << ", " << yAmount << ")\n";
+      // std::cout << "onScroll (" << xAmount << ", " << yAmount << ")\n";
     }
   };
 

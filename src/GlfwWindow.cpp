@@ -170,6 +170,7 @@ namespace
                     {
                       const std::unique_ptr<IGlRendererMaker> rendererMaker = rts.futureGlRendererMaker.get();
                       rts.renderer = rendererMaker->makeGlRenderer();
+                      rts.state = RenderThreadState::shouldRender;
                     }
 
                   if( rts.frameSizeUpdate )

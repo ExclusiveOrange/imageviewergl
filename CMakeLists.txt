@@ -12,10 +12,24 @@ project(imageviewergl CXX)
 # File / Settings / Build, Execution, Deployment / CMake / (Profile) / CMake options:
 #    -GNinja -DCMAKE_TOOLCHAIN_FILE=c:/vcpkg/scripts/buildsystems/vcpkg.cmake
 #
+# NOTE: VScode with vcpkg
+#   make sure you have this in your vscode settings.json file:
+# {
+#   ...
+#   "cmake.configureSettings": {
+#     "CMAKE_TOOLCHAIN_FILE": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+#   },
+#   ...
+# }
+#
 # NOTICE: if on Windows using vcpkg and CMake suddenly can't find anything,
 # consider reinstalling vcpkg (delete vcpkg directory, follow instructions online to re-install).
 # No idea why, but mine stopped working and reinstalling it was the only way to get it working again.
 # This also means using vcpkg to reinstall all dependencies.
+#
+# TODO: It is possible to install vcpkg as a git (submodule?) into this project folder, and to
+#   modify this CMakeLists.txt to bootstrap it as needed. I don't feel like figuring that out right now,
+#   but I've done it on other projects so I remember that it's possible and not too difficult.
 
 find_package(glfw3 3.3.4 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
