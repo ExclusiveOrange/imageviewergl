@@ -29,6 +29,16 @@
 
 //==============================================================================
 
+/* TODO: Error dialog.
+Make error reporting create a dialog (is this possible with glfw?) when there is an error.
+Currently errors are only visible if you launch the program from a command line terminal,
+otherwise the program appears to quit without saying anything.
+Currently cases where the program might fail are:
+  * missing shader files (I'd like to bake them into the executable but I don't know a simple cross-platform way to do that, yet
+  * corrupt or unsupported image file / format
+  * out of memory (I guess this is possible but very unlikely)
+*/
+
 namespace
 {
 //void centerGlfwWindow( GLFWwindow *window, GLFWmonitor *monitor )
@@ -88,8 +98,6 @@ int Main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
-  // TODO: this promise mechanism doesn't always work: I have found rarely if the image finishes loading before the window is ready, nothing is shown
-
   // In a separate thread calls makeGlRendererMaker through std::async;
   // at the same time, passes a std::future to makeGlfwWindow(..),
   // which will be fulfilled when the image has been loaded in makeGlRendererMaker.
@@ -113,6 +121,7 @@ int Main( int argc, char *argv[] )
 
   //------------------------------------------------------------------------------
 
+  // useless for now but could be used for something later
   struct InputHandler : GlWindowInputHandler
   {
     void onCursorPosition( double xPos, double yPos ) override
