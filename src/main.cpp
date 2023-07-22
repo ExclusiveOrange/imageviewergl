@@ -113,6 +113,11 @@ int Main( int argc, char *argv[] )
   window->setTitle( imageFilename );
 
   const ImageDimensions imageDimensions = readImageDimensions( imageFilename.c_str());
+  
+  // TODO: center window in current monitor (not easy to figure out yet; can just use primary monitor at first)
+  // TODO: size window to fit image
+  // TODO: constrain window size to fit within current monitor work area while preserving image aspect ratio
+  // TODO: deal with window "snap" since it will break aspect ratio if allowed to only change the height of the window
 
   window->setContentAspectRatio( imageDimensions.width, imageDimensions.height );
   window->setContentSize( imageDimensions.width, imageDimensions.height );

@@ -13,9 +13,6 @@
 #include <optional>
 #include <thread>
 
-// DELETE
-#include <iostream>
-
 namespace
 {
   void

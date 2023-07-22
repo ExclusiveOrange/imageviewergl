@@ -4,9 +4,6 @@
 #include "makeShader.hpp"
 #include "readFile.hpp"
 
-// DELETE
-#include <iostream>
-
 namespace
 {
   constexpr const char *vertShaderFilename = "../shaders/texture.vert";
