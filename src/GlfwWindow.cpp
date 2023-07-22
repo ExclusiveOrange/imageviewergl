@@ -156,23 +156,25 @@ namespace
             // activate the OpenGL context in this thread (the render thread);
             // however it is now unusable in the original thread
             glfwMakeContextCurrent( this->window );
+            
+            // wait for renderer to exist
+            renderThreadShared.withLock(
+              []( RenderThreadShared &rts ){ rts.renderer = rts.futureGlRendererMaker.get()->makeGlRenderer(); }
+            );
 
             auto waitPredicate =
                 []( const RenderThreadShared &rts ) { return rts.state != RenderThreadState::shouldWait; };
 
             auto whileLocked =
                 [this]( RenderThreadShared &rts )
-                    -> bool // returns true while should continue, else returns false when should quit
+                    -> bool // true to continue, false to quit
                 {
                   if( rts.state == RenderThreadState::shouldQuit )
                     return false;
 
-                  if( !rts.renderer )
-                    rts.renderer = rts.futureGlRendererMaker.get()->makeGlRenderer();
-
                   if( rts.frameSizeUpdate )
                   {
-                    auto[width, height] = *std::exchange( rts.frameSizeUpdate, std::nullopt );
+                    auto [width, height] = *std::exchange(rts.frameSizeUpdate, std::nullopt);
                     glViewport( 0, 0, width, height );
                   }
 
