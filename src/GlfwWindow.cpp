@@ -13,6 +13,17 @@
 #include <optional>
 #include <thread>
 
+/* TODO
+   
+glfwGetWindowFrameSize returns the wrong values on Windows 10 (maybe on 11 too).
+This makes it unusable for centering the window and constraining the maximimum size.
+So I have turned off window "decorations", and now the frame size is 0,0,0,0, which is good for visibility but bad for usability.
+Now I will have to manually add back in window dragging and resizing and closing (important!).
+Closing could be done with the Esc key at first, but eventually I'd like a visual X on the top right (or somewhere obvious) on hover in that area.
+Sizing isn't terribly important yet, but moving the window around is important and could be done with simple left-click drag.
+
+*/ 
+
 // DELETE
 #include <iostream>
 
@@ -115,7 +126,7 @@ namespace
       glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 1 );
       glfwWindowHint( GLFW_VISIBLE, GLFW_FALSE );
       glfwWindowHint( GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE );
-      glfwWindowHint( GLFW_DECORATED, GLFW_TRUE );
+      glfwWindowHint( GLFW_DECORATED, GLFW_FALSE );
 
       window = glfwCreateWindow( 640, 480, "", nullptr, nullptr );
       if( !window )
@@ -284,9 +295,15 @@ namespace
       const int availHeight = height - top - bottom;
 
       std::cout << "availWidth: " << availWidth << ", availHeight: " << availHeight << std::endl;
+      
+      std::cout << "contentWidth: " << contentWidth << ", contentHeight: " << contentHeight << std::endl;
 
       if (contentWidth <= availWidth && contentHeight <= availHeight) {
-        // TODO: simply set the window content size directly and then center the window within the work area
+        // set the window content size directly and then center the window within the work area
+        glfwSetWindowSize( window, contentWidth, contentHeight );
+        const int centeredX = xpos + left + (availWidth / 2) - (contentWidth / 2);
+        const int centeredY = ypos + top + (availHeight / 2) - (contentHeight / 2);
+        glfwSetWindowPos( window, centeredX, centeredY );
       }
       else {
         // TODO: content is larger than available space, so constrain while maintaining aspect ratio
