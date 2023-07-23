@@ -13,6 +13,9 @@
 #include <optional>
 #include <thread>
 
+// DELETE
+#include <iostream>
+
 namespace
 {
   void
@@ -259,6 +262,36 @@ namespace
       XYf xyf{};
       glfwGetWindowContentScale( window, &xyf.x, &xyf.y );
       return xyf;
+    }
+
+    void
+    setCenteredToFit( int contentWidth, int contentHeight ) 
+    override
+    {
+      // get monitor work area
+      // TODO: figure out which monitor the center of the window is in and use that one instead of necessarily the primary monitor
+      GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+      int xpos = 0, ypos = 0, width = 0, height = 0;
+      glfwGetMonitorWorkarea(monitor, &xpos, &ypos, &width, &height);
+      std::cout << "xpos: " << xpos << ", ypos: " << ypos << ", width: " << width << ", height: " << height << std::endl;
+
+      // get window frame size
+      int left = 0, top = 0, right = 0, bottom = 0;
+      glfwGetWindowFrameSize( window, &left, &top, &right, &bottom );
+      std::cout << "left: " << left << ", top: " << top << ", right: " << right << ", bottom: " << bottom << std::endl;
+
+      const int availWidth = width - left - right;
+      const int availHeight = height - top - bottom;
+
+      std::cout << "availWidth: " << availWidth << ", availHeight: " << availHeight << std::endl;
+
+      if (contentWidth <= availWidth && contentHeight <= availHeight) {
+        // TODO: simply set the window content size directly and then center the window within the work area
+      }
+      else {
+        // TODO: content is larger than available space, so constrain while maintaining aspect ratio
+      }
+      
     }
 
     void

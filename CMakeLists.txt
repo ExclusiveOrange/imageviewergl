@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.19)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Tells CMake to generate compile_commands.json which is necessary for proper Intellisense in VSCode.
+# But that json is only generated if using either the Makefile or Ninja generator.
+# In Windows you can tell CMake to use Ninja by creating an environment variable CMAKE_GENERATOR and setting it to Ninja.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(imageviewergl CXX)

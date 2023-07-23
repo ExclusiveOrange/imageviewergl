@@ -118,9 +118,11 @@ int Main( int argc, char *argv[] )
   // TODO: size window to fit image
   // TODO: constrain window size to fit within current monitor work area while preserving image aspect ratio
   // TODO: deal with window "snap" since it will break aspect ratio if allowed to only change the height of the window
+  
+  window->setCenteredToFit( imageDimensions.width, imageDimensions.height );
 
-  window->setContentAspectRatio( imageDimensions.width, imageDimensions.height );
-  window->setContentSize( imageDimensions.width, imageDimensions.height );
+  // window->setContentAspectRatio( imageDimensions.width, imageDimensions.height );
+  // window->setContentSize( imageDimensions.width, imageDimensions.height );
 
   window->show();
 
