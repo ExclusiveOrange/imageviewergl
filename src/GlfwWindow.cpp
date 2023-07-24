@@ -76,7 +76,8 @@ namespace
 
     void onCursorPosition(double xPos, double yPos) override
     {
-      // std::cout << "onCursorPosition (" << xPos << ", " << yPos << ")\n";
+      if (dragging)
+        drag(xPos, yPos);
     }
 
     void onKeyDown(int key, int scancode, int mods) override
@@ -88,14 +89,43 @@ namespace
         break;
       }
     }
-
-    void onScroll(double xAmount, double yAmount) override
+    
+    void onMouseDown(int button, int mods) override
     {
-      // std::cout << "onScroll (" << xAmount << ", " << yAmount << ")\n";
+      if (button == GLFW_MOUSE_BUTTON_1)
+        if (!dragging) // might be possible with two mice or something weird, not sure how glfw would handle that
+          startDrag();
+    }
+
+    void onMouseUp(int button, int mods) override
+    {
+      if (button == GLFW_MOUSE_BUTTON_1)
+        if (dragging)
+          dragging = std::nullopt;
     }
 
   private:
     IGlWindow &window;
+    struct Dragging { double x, y; };
+    std::optional<Dragging> dragging;
+    
+    void drag(double xrel, double yrel) {
+      // TODO: consider snapping to edges of screen work area:
+      //   check if any edge is within some threshold distance to the nearest parallel edge of the screen work area;
+      //   if multiple edges are within, take the closest per axis (may be snapping on horizontal and vertical edges);
+      //   position the window so that the edge is exactly on the corresponding edge of the screen work area;
+      //   this doesn't change any state except window position so shouldn't need to track anything.
+      // NOTE: the snapping idea would need to take multiple monitors into account
+
+      int sx, sy;
+      window.getContentPosScreen(&sx, &sy);
+      window.setContentPosScreen(sx + xrel - dragging->x, sy + yrel - dragging->y);
+    }
+    
+    void startDrag() {
+      dragging = Dragging{};
+      window.getCursorPosContent(&dragging->x, &dragging->y);
+    }
   };
 
 //==============================================================================
@@ -118,6 +148,20 @@ namespace
     cursorPosition(GLFWwindow *window, double xpos, double ypos)
     {
       CallbackContext::from(window)->inputHandler.onCursorPosition(xpos, ypos);
+    }
+
+    static void
+    mouseButton(GLFWwindow *window, int button, int action, int mods)
+    {
+      switch (auto &ih = CallbackContext::from(window)->inputHandler; action)
+      {
+        case GLFW_PRESS:
+          ih.onMouseDown(button, mods);
+          break;
+        case GLFW_RELEASE:
+          ih.onMouseUp(button, mods);
+          break;
+      }
     }
 
     static void
@@ -206,6 +250,7 @@ namespace
       // glfw input callbacks (not render thread)
       glfwSetCursorPosCallback( window, GlfwInputCallbacks::cursorPosition );
       glfwSetKeyCallback( window, GlfwInputCallbacks::key );
+      glfwSetMouseButtonCallback( window, GlfwInputCallbacks::mouseButton );
     }
 
     void startGlfw()
@@ -315,12 +360,33 @@ namespace
     {
       for (startRenderThread(); !glfwWindowShouldClose(window); glfwWaitEvents());
     }
+    
+    void
+    getCursorPosContent(double *x, double *y)
+    override
+    {
+      glfwGetCursorPos( window, x, y );
+    }
+
+    void
+    getContentPosScreen(int *x, int *y)
+    override
+    {
+      glfwGetWindowPos( window, x, y );
+    }
 
     void
     hide()
     override
     {
       glfwHideWindow( window );
+    }
+    
+    void
+    setContentPosScreen(int x, int y)
+    override
+    {
+      glfwSetWindowPos( window, x, y );
     }
 
     void
