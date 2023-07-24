@@ -8,7 +8,8 @@
 struct IGlWindow : IGlWindowAppearance
 {
   ~IGlWindow() override = default;
-  virtual void enterEventLoop( std::shared_ptr< GlWindowInputHandler > ) = 0;
+  virtual void close() = 0;
+  virtual void enterEventLoop() = 0;
   virtual void hide() = 0;
   virtual void show() = 0;
 };

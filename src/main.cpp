@@ -1,6 +1,15 @@
+// 2023 Atlee Brink
+// Messing around with glfw to make a very basic barebones opengl image viewer for Mac and Windows. Maybe Linux too, didn't try.
+// Development on this project is sparse because it's not important and it's not interesting.
+// But wow the built-in Windows image viewer is so awful that pretty much anything is better.
+// I'm only using OpenGL because it's super fast at displaying and scaling the image.
+// If at some point I want to make a more complicated shader (brightness / gamma / ???) or add zooming, OpenGL makes it easy.
+// An image viewer project doesn't need to use all the dumb C++ stuff I did in this project, but I was having fun.
+
+#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
+
 #include "Destroyer.hpp"
 #include "GlfwWindow.hpp"
-#include "GlWindowInputHandler.hpp"
 #include "makeGlRendererMaker.hpp"
 #include "readImageDimensions.hpp"
 
@@ -38,34 +47,6 @@ Currently cases where the program might fail are:
   * corrupt or unsupported image file / format
   * out of memory (I guess this is possible but very unlikely)
 */
-
-namespace
-{
-//void centerGlfwWindow( GLFWwindow *window, GLFWmonitor *monitor )
-//{
-//  struct { int x, y, w, h; } monitorWorkArea;
-//  glfwGetMonitorWorkarea( monitor, &monitorWorkArea.x, &monitorWorkArea.y, &monitorWorkArea.w, &monitorWorkArea.h );
-//  struct { int x, y; } monitorWorkAreaCenter{
-//      monitorWorkArea.w / 2 + monitorWorkArea.x,
-//      monitorWorkArea.h / 2 + monitorWorkArea.y };
-//
-//  struct { int w, h; } windowSize;
-//  glfwGetWindowSize( window, &windowSize.w, &windowSize.h );
-//
-//  struct { int l, t, r, b; } frameSize;
-//  glfwGetWindowFrameSize( window, &frameSize.l, &frameSize.t, &frameSize.r, &frameSize.b );
-//
-//  struct { int w, h; } fullWindowSize{
-//      windowSize.w + frameSize.l + frameSize.r,
-//      windowSize.h + frameSize.t + frameSize.b };
-//
-//  struct { int x, y; } windowContentPos{
-//      monitorWorkAreaCenter.x - fullWindowSize.w / 2 + frameSize.l,
-//      monitorWorkAreaCenter.y - fullWindowSize.h / 2 + frameSize.t };
-//
-//  glfwSetWindowPos( window, windowContentPos.x, windowContentPos.y );
-//}
-} // namespace
 
 //==============================================================================
 
@@ -105,7 +86,7 @@ int Main( int argc, char *argv[] )
   // simultaneously with the image being loaded from the filesystem, to hopefully
   // reduce the total time it takes before the user sees the image on screen.
 
-  std::unique_ptr<IGlWindow> window = makeGlfwWindow(
+  std::shared_ptr<IGlWindow> window = makeGlfwWindow(
       std::async( std::launch::async, makeGlRendererMaker, imageFilename ));
 
   //------------------------------------------------------------------------------
@@ -114,35 +95,9 @@ int Main( int argc, char *argv[] )
 
   const ImageDimensions imageDimensions = readImageDimensions( imageFilename.c_str());
   
-  // TODO: center window in current monitor (not easy to figure out yet; can just use primary monitor at first)
-  // TODO: size window to fit image
-  // TODO: constrain window size to fit within current monitor work area while preserving image aspect ratio
-  // TODO: deal with window "snap" since it will break aspect ratio if allowed to only change the height of the window
-  
   window->setCenteredToFit( imageDimensions.width, imageDimensions.height );
-
-  // window->setContentAspectRatio( imageDimensions.width, imageDimensions.height );
-  // window->setContentSize( imageDimensions.width, imageDimensions.height );
-
   window->show();
-
-  //------------------------------------------------------------------------------
-
-  // useless for now but could be used for something later
-  struct InputHandler : GlWindowInputHandler
-  {
-    void onCursorPosition( double xPos, double yPos ) override
-    {
-      // std::cout << "onCursorPosition (" << xPos << ", " << yPos << ")\n";
-    }
-
-    void onScroll( double xAmount, double yAmount ) override
-    {
-      // std::cout << "onScroll (" << xAmount << ", " << yAmount << ")\n";
-    }
-  };
-
-  window->enterEventLoop( std::make_unique<InputHandler>());
+  window->enterEventLoop();
 
   return 0;
 }

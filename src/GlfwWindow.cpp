@@ -45,7 +45,123 @@ namespace
 
 //==============================================================================
 
-  struct WindowState
+  enum class RenderThreadState
+  {
+    shouldWait,
+    shouldRender,
+    shouldQuit
+  };
+
+//==============================================================================
+
+  struct RenderThreadShared
+  {
+    RenderThreadState state = RenderThreadState::shouldRender;
+
+    struct FrameSize
+    {
+      int width, height;
+    };
+    std::optional<FrameSize> frameSizeUpdate;
+
+    std::future<std::unique_ptr<IGlRendererMaker>> futureGlRendererMaker;
+    std::unique_ptr<IGlRenderer> renderer;
+  };
+  
+//==============================================================================
+
+  struct InputHandler : GlWindowInputHandler
+  {
+    InputHandler(IGlWindow &window) : window{window} {}
+
+    void onCursorPosition(double xPos, double yPos) override
+    {
+      // std::cout << "onCursorPosition (" << xPos << ", " << yPos << ")\n";
+    }
+
+    void onKeyDown(int key, int scancode, int mods) override
+    {
+      switch (key)
+      {
+      case 256: // Escape
+        window.close();
+        break;
+      }
+    }
+
+    void onScroll(double xAmount, double yAmount) override
+    {
+      // std::cout << "onScroll (" << xAmount << ", " << yAmount << ")\n";
+    }
+
+  private:
+    IGlWindow &window;
+  };
+
+//==============================================================================
+
+  struct CallbackContext
+  {
+    GlWindowInputHandler &inputHandler;
+    Mutexed<RenderThreadShared> &renderThreadShared;
+    
+    static CallbackContext *from(GLFWwindow *window) {
+      return static_cast<CallbackContext*>(glfwGetWindowUserPointer(window));
+    }
+  };
+
+//==============================================================================
+
+  struct GlfwInputCallbacks
+  {
+    static void
+    cursorPosition(GLFWwindow *window, double xpos, double ypos)
+    {
+      CallbackContext::from(window)->inputHandler.onCursorPosition(xpos, ypos);
+    }
+
+    static void
+    key(GLFWwindow *window, int key, int scancode, int action, int mods)
+    {
+      switch (auto &ih = CallbackContext::from(window)->inputHandler; action)
+      {
+      case GLFW_PRESS:
+        ih.onKeyDown(key, scancode, mods);
+        break;
+      case GLFW_REPEAT:
+        ih.onKeyRepeat(key, scancode, mods);
+        break;
+      case GLFW_RELEASE:
+        ih.onKeyUp(key, scancode, mods);
+        break;
+      }
+    }
+  };
+
+//==============================================================================
+
+  struct GlfwRenderCallbacks
+  {
+    static void
+    framebufferSize(GLFWwindow *window, int width, int height)
+    {
+      CallbackContext::from(window)->renderThreadShared.withLock(
+          [=](RenderThreadShared &rts)
+          { rts.frameSizeUpdate = {width, height}; });
+    }
+
+    static void
+    windowRefresh(GLFWwindow *window)
+    {
+      CallbackContext::from(window)->renderThreadShared.withLockThenNotify(
+          [=](RenderThreadShared &rts)
+          { rts.state = RenderThreadState::shouldRender; });
+    }
+  };
+
+//==============================================================================
+
+  struct State
   {
     struct
     {
@@ -55,70 +171,17 @@ namespace
     } destroyers;
 
     GLFWwindow *window{};
-
-    enum class RenderThreadState { shouldWait, shouldRender, shouldQuit };
-    struct RenderThreadShared
-    {
-      RenderThreadState state = RenderThreadState::shouldRender;
-
-      struct FrameSize { int width, height; };
-      std::optional<FrameSize> frameSizeUpdate;
-
-      std::future<std::unique_ptr<IGlRendererMaker >> futureGlRendererMaker;
-      std::unique_ptr<IGlRenderer> renderer;
-    };
-    Mutexed<RenderThreadShared> renderThreadShared;
     std::thread renderThread;
 
-    std::shared_ptr<GlWindowInputHandler> inputHandler
-        { std::make_shared<GlWindowInputHandler>() }; // initialize with a default value so we don't have to check validity later
+    InputHandler inputHandler;
+    Mutexed<RenderThreadShared> renderThreadShared{};
   };
 
 //==============================================================================
 
-  struct GlfwWindow : IGlWindow, WindowState
+  struct GlfwWindow : IGlWindow, State
   {
-    struct GlfwRenderCallbacks
-    {
-      static void
-      framebufferSize( GLFWwindow *window, int width, int height )
-      {
-        auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
-        gw->renderThreadShared.withLock(
-            [=]( RenderThreadShared &rts ) { rts.frameSizeUpdate = { width, height }; } );
-      }
-
-      static void
-      windowRefresh( GLFWwindow *window )
-      {
-        auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
-        gw->renderThreadShared.withLockThenNotify(
-            [=]( RenderThreadShared &rts ) { rts.state = RenderThreadState::shouldRender; } );
-      }
-    };
-
-    //------------------------------------------------------------------------------
-
-    struct GlfwInputCallbacks
-    {
-      static void
-      scroll( GLFWwindow *window, double xoffset, double yoffset )
-      {
-        auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
-        gw->inputHandler->onScroll( xoffset, yoffset );
-      }
-
-      static void
-      cursorPosition( GLFWwindow *window, double xpos, double ypos )
-      {
-        auto gw = static_cast< GlfwWindow * >( glfwGetWindowUserPointer( window ));
-        gw->inputHandler->onCursorPosition( xpos, ypos );
-      }
-    };
-
-    //------------------------------------------------------------------------------
-
-    void createGlfwWindow()
+    void createGlfwWindow(CallbackContext *callbackContext)
     {
       glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
       glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE );
@@ -134,15 +197,15 @@ namespace
 
       destroyers.glfwCreateWindow = Destroyer{ [window = this->window] { glfwDestroyWindow( window ); }};
 
-      glfwSetWindowUserPointer( window, this );
+      glfwSetWindowUserPointer( window, callbackContext );
 
       // glfw callbacks involving render thread
       glfwSetFramebufferSizeCallback( window, GlfwRenderCallbacks::framebufferSize );
       glfwSetWindowRefreshCallback( window, GlfwRenderCallbacks::windowRefresh );
 
       // glfw input callbacks (not render thread)
-      glfwSetScrollCallback( window, GlfwInputCallbacks::scroll );
       glfwSetCursorPosCallback( window, GlfwInputCallbacks::cursorPosition );
+      glfwSetKeyCallback( window, GlfwInputCallbacks::key );
     }
 
     void startGlfw()
@@ -216,10 +279,13 @@ namespace
     explicit
     GlfwWindow(
         std::future<std::unique_ptr<IGlRendererMaker >>
-        futureGlRendererMaker )
+        futureGlRendererMaker
+    )
+      : State{.inputHandler{*this}}
+      , callbackContext{.inputHandler = inputHandler, .renderThreadShared = renderThreadShared}
     {
       startGlfw();
-      createGlfwWindow();
+      createGlfwWindow(&callbackContext);
       startGlew( window );
       glfwSwapInterval( 0 );
 
@@ -235,18 +301,19 @@ namespace
 
 //------------------------------------------------------------------------------
 // IGlWindow overrides
-
+    
     void
-    enterEventLoop( std::shared_ptr<GlWindowInputHandler> _inputHandler )
+    close()
     override
     {
-      if( _inputHandler )
-        this->inputHandler = std::move( _inputHandler );
+      glfwSetWindowShouldClose(window, 1);
+    }
 
-      startRenderThread();
-
-      while( !glfwWindowShouldClose( window ))
-        glfwWaitEvents();
+    void
+    enterEventLoop()
+    override
+    {
+      for (startRenderThread(); !glfwWindowShouldClose(window); glfwWaitEvents());
     }
 
     void
@@ -284,31 +351,44 @@ namespace
       GLFWmonitor *monitor = glfwGetPrimaryMonitor();
       int xpos = 0, ypos = 0, width = 0, height = 0;
       glfwGetMonitorWorkarea(monitor, &xpos, &ypos, &width, &height);
-      std::cout << "xpos: " << xpos << ", ypos: " << ypos << ", width: " << width << ", height: " << height << std::endl;
 
       // get window frame size
       int left = 0, top = 0, right = 0, bottom = 0;
       glfwGetWindowFrameSize( window, &left, &top, &right, &bottom );
-      std::cout << "left: " << left << ", top: " << top << ", right: " << right << ", bottom: " << bottom << std::endl;
 
       const int availWidth = width - left - right;
       const int availHeight = height - top - bottom;
-
-      std::cout << "availWidth: " << availWidth << ", availHeight: " << availHeight << std::endl;
       
-      std::cout << "contentWidth: " << contentWidth << ", contentHeight: " << contentHeight << std::endl;
+      int newWidth = 0, newHeight = 0;
+      int newX = 0, newY = 0;
 
       if (contentWidth <= availWidth && contentHeight <= availHeight) {
         // set the window content size directly and then center the window within the work area
-        glfwSetWindowSize( window, contentWidth, contentHeight );
-        const int centeredX = xpos + left + (availWidth / 2) - (contentWidth / 2);
-        const int centeredY = ypos + top + (availHeight / 2) - (contentHeight / 2);
-        glfwSetWindowPos( window, centeredX, centeredY );
+        newWidth = contentWidth;
+        newHeight = contentHeight;
+        newX = xpos + left + (availWidth / 2) - (contentWidth / 2);
+        newY = ypos + top + (availHeight / 2) - (contentHeight / 2);
       }
       else {
-        // TODO: content is larger than available space, so constrain while maintaining aspect ratio
+        // content is larger than available space, so constrain while maintaining aspect ratio
+        if (const float contentRatio = (float)contentWidth / contentHeight; contentRatio >= (float)availWidth / availHeight) {
+          // content is wider than avail
+          newWidth = availWidth;
+          newHeight = (int)(newWidth / contentRatio);
+          newX = xpos;
+          newY = ypos + (availHeight - newHeight) / 2;
+        }
+        else {
+          // content is taller than avail
+          newHeight = availHeight;
+          newWidth = (int)(newHeight * contentRatio);
+          newX = xpos + (availWidth - newWidth) / 2;
+          newY = ypos;
+        }
       }
-      
+
+      glfwSetWindowSize( window, newWidth, newHeight );
+      glfwSetWindowPos( window, newX, newY );
     }
 
     void
@@ -330,8 +410,11 @@ namespace
     {
       glfwSetWindowTitle( window, title.c_str());
     }
+    
+    private:
+      CallbackContext callbackContext;
   };
-}
+} // namespace
 
 std::unique_ptr<IGlWindow>
 makeGlfwWindow(
